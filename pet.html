@@ -290,12 +290,16 @@
       }
     });
 
-    // --- Pet run away ---
+    // --- Pet run away (nod first, then run) ---
     ipcRenderer.on('pet-run-away', (event, petId) => {
       const pet = pets.find(p => p.id === petId);
       if (!pet) return;
-      pet.state = 'running-away';
-      playPetAnim(pet, 'Running', { timeScale: 1.5 });
+      // Nod first
+      playPetAnim(pet, 'Yes', { loop: false });
+      setTimeout(() => {
+        pet.state = 'running-away';
+        playPetAnim(pet, 'Running', { timeScale: 1.5 });
+      }, 1200);
     });
 
     // --- Pet come back ---

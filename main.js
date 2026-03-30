@@ -123,7 +123,7 @@ ipcMain.on('start-task', (event, { petId, message }) => {
     }
   }, 1000);
 
-  const duration = 15000 + Math.random() * 10000;
+  const duration = 30000 + Math.random() * 20000; // 30~50초
   setTimeout(() => {
     if (appWindow) {
       appWindow.webContents.send('task-done', { petId, petName: pet.name, message });
