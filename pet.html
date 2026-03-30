@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     html, body {
       width: 100%;
       height: 100%;
@@ -12,95 +11,60 @@
       background: transparent;
       user-select: none;
     }
-
     #pet-area {
       width: 100%;
       height: 100%;
       position: relative;
       -webkit-app-region: drag;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      align-items: center;
     }
-
-    canvas {
-      -webkit-app-region: no-drag;
-      cursor: pointer;
-    }
+    canvas { -webkit-app-region: no-drag; cursor: pointer; }
 
     .bubble {
       position: absolute;
-      bottom: 175px;
-      left: 50%;
-      transform: translateX(-50%);
+      top: 8px;
+      left: 80px;
       background: white;
-      border-radius: 16px;
+      border-radius: 14px;
       padding: 6px 12px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 11px;
       color: #333;
-      box-shadow: 0 3px 15px rgba(0, 0, 0, 0.15);
-      max-width: 150px;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.15);
+      max-width: 180px;
       text-align: center;
       z-index: 10;
       pointer-events: none;
       animation: bubblePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
-
     .bubble::after {
       content: '';
       position: absolute;
-      bottom: -7px;
-      left: 50%;
-      transform: translateX(-50%);
-      border-left: 7px solid transparent;
-      border-right: 7px solid transparent;
-      border-top: 7px solid white;
+      bottom: -6px;
+      left: 30px;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 6px solid white;
     }
-
     .bubble.hidden { display: none; }
-
-    .name-tag {
-      position: absolute;
-      bottom: 8px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 10px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 10px;
-      color: white;
-      pointer-events: none;
-      z-index: 10;
-    }
-
     @keyframes bubblePop {
-      0% { transform: translateX(-50%) scale(0); opacity: 0; }
-      100% { transform: translateX(-50%) scale(1); opacity: 1; }
+      0% { transform: scale(0); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
     }
 
     .chat-container {
       position: absolute;
       bottom: 8px;
-      left: 50%;
-      transform: translateX(-50%);
+      left: 30px;
       z-index: 20;
       display: none;
       -webkit-app-region: no-drag;
     }
-
     .chat-container.visible {
       display: flex;
       animation: slideUp 0.3s ease-out;
     }
-
     .chat-input {
-      width: 140px;
+      width: 180px;
       padding: 6px 10px;
       border: 2px solid #7C6FF7;
       border-radius: 14px;
@@ -110,22 +74,19 @@
       background: white;
       box-shadow: 0 4px 15px rgba(124, 111, 247, 0.2);
     }
-
     .chat-input::placeholder { color: #bbb; }
-
     @keyframes slideUp {
-      0% { transform: translateX(-50%) translateY(20px); opacity: 0; }
-      100% { transform: translateX(-50%) translateY(0); opacity: 1; }
+      0% { transform: translateY(10px); opacity: 0; }
+      100% { transform: translateY(0); opacity: 1; }
     }
   </style>
 </head>
 <body>
   <div id="pet-area">
-    <div class="bubble" id="bubble">로딩 중...</div>
+    <div class="bubble hidden" id="bubble"></div>
     <div id="canvas-container"></div>
-    <div class="name-tag" id="nameTag"></div>
     <div class="chat-container" id="chatContainer">
-      <input class="chat-input" id="chatInput" placeholder="할 일을 말해줘..." autofocus />
+      <input class="chat-input" id="chatInput" placeholder="할 일을 말해줘..." />
     </div>
   </div>
 
@@ -135,185 +96,130 @@
     const { GLTFLoader } = require('three/examples/jsm/loaders/GLTFLoader.js');
     const pathModule = require('path');
 
-    // --- Config (received from main) ---
-    let petId = '';
-    let petName = '';
-    let petColor = '#7C6FF7';
-
-    // --- State ---
-    let state = 'idle';
-    let mixer = null;
-    let animations = {};
-    let currentAction = null;
-    let robot = null;
-
-    // --- Three.js setup ---
+    // --- Scene setup ---
+    const W = 300, H = 280;
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(35, 160 / 160, 0.1, 100);
-    camera.position.set(0, 1.0, 3.5);
-    camera.lookAt(0, 0.6, 0);
+    const camera = new THREE.PerspectiveCamera(30, W / H, 0.1, 100);
+    camera.position.set(0, 1.0, 5.5);
+    camera.lookAt(0, 0.3, -0.3);
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    renderer.setSize(160, 160);
+    renderer.setSize(W, H);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setClearColor(0x000000, 0);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
-    // --- Lighting ---
+    // Lighting
     scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    dirLight.position.set(3, 5, 4);
-    scene.add(dirLight);
-    scene.add(new THREE.DirectionalLight(0x9988ff, 0.5).position.set(-3, 2, -2) && new THREE.DirectionalLight(0x9988ff, 0.5));
+    const dl = new THREE.DirectionalLight(0xffffff, 1.2);
+    dl.position.set(3, 5, 4);
+    scene.add(dl);
 
-    // Shadow
-    const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(0.5, 32),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.1 })
-    );
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.01;
-    scene.add(shadow);
+    // Shadow plane
+    const shadowGeo = new THREE.PlaneGeometry(8, 4);
+    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.05 });
+    const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
+    shadowPlane.rotation.x = -Math.PI / 2;
+    shadowPlane.position.y = 0.01;
+    scene.add(shadowPlane);
 
-    const charGroup = new THREE.Group();
-    scene.add(charGroup);
+    // --- Pet data ---
+    const pets = []; // { id, name, color, group, mixer, animations, currentAction, state, queueIndex, targetPos }
+    let activeChatPetId = null;
 
-    // --- Apply color to robot ---
     function applyColor(obj, hexColor) {
       const color = new THREE.Color(hexColor);
       obj.traverse((child) => {
         if (child.isMesh && child.material) {
           const mat = child.material.clone();
-          // Tint the existing color
-          const origColor = mat.color ? mat.color.clone() : new THREE.Color(1, 1, 1);
-          const lum = origColor.r * 0.299 + origColor.g * 0.587 + origColor.b * 0.114;
-          if (lum > 0.3 && lum < 0.9) {
-            // Mid-tone: apply pet color
-            mat.color.lerp(color, 0.6);
-          }
+          const c = mat.color ? mat.color.clone() : new THREE.Color(1,1,1);
+          const lum = c.r * 0.299 + c.g * 0.587 + c.b * 0.114;
+          if (lum > 0.3 && lum < 0.9) mat.color.lerp(color, 0.6);
           child.material = mat;
         }
       });
     }
 
-    // --- Load Robot ---
-    function loadRobot() {
+    function loadPet(config, index) {
       const loader = new GLTFLoader();
       const modelPath = pathModule.join(__dirname, 'assets', 'robot.glb');
 
       loader.load(modelPath, (gltf) => {
-        robot = gltf.scene;
-        robot.scale.set(0.3, 0.3, 0.3);
-        applyColor(robot, petColor);
-        charGroup.add(robot);
+        const group = new THREE.Group();
+        const model = gltf.scene;
+        const initScale = 0.18 - index * 0.03;
+        model.scale.set(initScale, initScale, initScale);
+        applyColor(model, config.color);
+        group.add(model);
 
-        mixer = new THREE.AnimationMixer(robot);
-        gltf.animations.forEach((clip) => {
+        // Front pet = left & close (z small), back pet = right & far (z big)
+        group.position.set(-0.5 + index * 0.5, 0, -index * 0.6);
+        scene.add(group);
+
+        const mixer = new THREE.AnimationMixer(model);
+        const animations = {};
+        gltf.animations.forEach(clip => {
           animations[clip.name] = mixer.clipAction(clip);
         });
 
-        playAnimation('Idle');
-        setBubble(`안녕! 나는 ${petName}! 👋`);
+        const pet = {
+          id: config.id,
+          name: config.name,
+          color: config.color,
+          group,
+          model,
+          mixer,
+          animations,
+          currentAction: null,
+          state: 'idle', // idle, running-away, gone, coming-back
+          returnedAt: Date.now() - (2 - index) * 1000,
+          queueIndex: index,
+          targetScale: 0.18 - index * 0.03,
+          targetX: -0.5 + index * 0.5,
+          targetZ: -index * 0.6,
+        };
+
+        playPetAnim(pet, 'Idle');
+        pets.push(pet);
+
+        // Show greeting for front pet
+        if (index === 0) {
+          setBubble(`안녕! 나는 ${config.name}! 👋`);
+        }
       });
     }
 
-    function playAnimation(name, options = {}) {
-      if (!animations[name]) return;
-      const newAction = animations[name];
-      if (currentAction && currentAction !== newAction) {
-        currentAction.fadeOut(0.3);
+    function playPetAnim(pet, name, options = {}) {
+      if (!pet.animations[name]) return;
+      const newAction = pet.animations[name];
+      if (pet.currentAction && pet.currentAction !== newAction) {
+        pet.currentAction.fadeOut(0.3);
       }
       newAction.reset();
       newAction.fadeIn(0.3);
       newAction.setLoop(options.loop !== false ? THREE.LoopRepeat : THREE.LoopOnce);
       if (options.timeScale) newAction.timeScale = options.timeScale;
       newAction.play();
-      currentAction = newAction;
+      pet.currentAction = newAction;
     }
 
-    // --- Init from main process ---
-    ipcRenderer.on('init-pet', (event, config) => {
-      petId = config.id;
-      petName = config.name;
-      petColor = config.color;
+    // --- Queue management ---
+    // Sort idle pets: front (index 0) = leftmost & closest to camera
+    function updateQueue() {
+      const idlePets = pets.filter(p => p.state === 'idle').sort((a, b) => {
+        // Earlier returned = front (waited longer)
+        return a.returnedAt - b.returnedAt;
+      });
 
-      // Apply color to UI
-      document.getElementById('nameTag').textContent = petName;
-      document.getElementById('nameTag').style.background = petColor;
-      document.querySelector('.chat-input').style.borderColor = petColor;
-
-      loadRobot();
-    });
-
-    // --- Mouse tracking ---
-    let mouseX = 0;
-    document.addEventListener('mousemove', (e) => {
-      mouseX = (e.clientX / 160) * 2 - 1;
-    });
-
-    // --- Click → show chat ---
-    renderer.domElement.addEventListener('click', () => {
-      if (state === 'idle') {
-        openChat();
-      }
-    });
-
-    function openChat() {
-      state = 'chatting';
-      document.getElementById('chatContainer').classList.add('visible');
-      document.getElementById('chatInput').focus();
-      setBubble('할 일을 입력해줘! ⌨️');
-      playAnimation('Wave', { loop: false });
-      setTimeout(() => {
-        if (state === 'chatting') playAnimation('Idle');
-      }, 1500);
+      idlePets.forEach((pet, i) => {
+        pet.queueIndex = i;
+        pet.targetX = -0.5 + i * 0.5;
+        pet.targetZ = -i * 0.6;
+        pet.targetScale = 0.18 - i * 0.03; // front=0.18, mid=0.15, back=0.12
+      });
     }
-
-    // --- IPC: open chat from shortcut ---
-    ipcRenderer.on('open-chat', () => {
-      if (state === 'idle') {
-        openChat();
-      }
-    });
-
-    // --- Send message ---
-    document.getElementById('chatInput').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && e.target.value.trim()) {
-        const msg = e.target.value.trim();
-        e.target.value = '';
-        document.getElementById('chatContainer').classList.remove('visible');
-        setBubble(`"${msg}" 알겠어! 🏃`);
-        playAnimation('Running', { timeScale: 1.5 });
-        ipcRenderer.send('start-task', { petId, message: msg });
-        ipcRenderer.send('chat-closed');
-      }
-      if (e.key === 'Escape') {
-        document.getElementById('chatContainer').classList.remove('visible');
-        state = 'idle';
-        setBubble(`나는 ${petName}! 클릭해봐!`);
-        playAnimation('Idle');
-        ipcRenderer.send('chat-closed');
-      }
-    });
-
-    // --- IPC: run away ---
-    ipcRenderer.on('run-away', () => {
-      state = 'running-away';
-      playAnimation('Running', { timeScale: 1.5 });
-    });
-
-    // --- IPC: come back ---
-    ipcRenderer.on('come-back', (event, resultMsg) => {
-      state = 'coming-back';
-      charGroup.position.x = 5;
-      charGroup.visible = true;
-      shadow.visible = true;
-      charGroup.rotation.y = Math.PI;
-      playAnimation('Running');
-      setBubble(resultMsg);
-    });
 
     // --- Bubble ---
     function setBubble(text) {
@@ -325,6 +231,114 @@
       bubble.textContent = text;
     }
 
+    function hideBubble() {
+      document.getElementById('bubble').classList.add('hidden');
+    }
+
+    // --- Init ---
+    ipcRenderer.on('init-pets', (event, configs) => {
+      configs.forEach((config, i) => loadPet(config, i));
+    });
+
+    // --- Open chat ---
+    ipcRenderer.on('open-chat', (event, petId) => {
+      const pet = pets.find(p => p.id === petId && p.state === 'idle');
+      if (!pet) return;
+
+      activeChatPetId = petId;
+      playPetAnim(pet, 'Wave', { loop: false });
+      setTimeout(() => {
+        if (pet.state === 'idle') playPetAnim(pet, 'Idle');
+      }, 1500);
+
+      setBubble(`할 일을 입력해줘! ⌨️`);
+      document.getElementById('chatContainer').classList.add('visible');
+      document.getElementById('chatInput').focus();
+      document.querySelector('.chat-input').style.borderColor = pet.color;
+    });
+
+    // --- Summon all ---
+    ipcRenderer.on('summon-all', () => {
+      // Bring all idle pets to front row
+      const idlePets = pets.filter(p => p.state === 'idle');
+      idlePets.forEach((pet, i) => {
+        pet.targetX = -0.5 + i * 0.5;
+        pet.targetZ = 0;
+        playPetAnim(pet, 'Wave', { loop: false });
+        setTimeout(() => {
+          if (pet.state === 'idle') playPetAnim(pet, 'Idle');
+        }, 1800);
+      });
+    });
+
+    // --- Chat input ---
+    document.getElementById('chatInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.value.trim()) {
+        const msg = e.target.value.trim();
+        e.target.value = '';
+        document.getElementById('chatContainer').classList.remove('visible');
+        setBubble(`"${msg}" 알겠어! 🏃`);
+        ipcRenderer.send('start-task', { petId: activeChatPetId, message: msg });
+        ipcRenderer.send('chat-closed');
+        activeChatPetId = null;
+      }
+      if (e.key === 'Escape') {
+        document.getElementById('chatContainer').classList.remove('visible');
+        hideBubble();
+        ipcRenderer.send('chat-closed');
+        activeChatPetId = null;
+      }
+    });
+
+    // --- Pet run away ---
+    ipcRenderer.on('pet-run-away', (event, petId) => {
+      const pet = pets.find(p => p.id === petId);
+      if (!pet) return;
+      pet.state = 'running-away';
+      playPetAnim(pet, 'Running', { timeScale: 1.5 });
+    });
+
+    // --- Pet come back ---
+    ipcRenderer.on('pet-come-back', (event, { petId, message }) => {
+      const pet = pets.find(p => p.id === petId);
+      if (!pet) return;
+      pet.state = 'coming-back';
+      pet.group.position.set(5, 0, 0); // come from right
+      pet.group.visible = true;
+      playPetAnim(pet, 'Running');
+      setBubble(`${pet.name}: ${message}`);
+
+      // Will transition to idle in animate loop
+    });
+
+    // --- Click on canvas ---
+    renderer.domElement.addEventListener('click', (e) => {
+      // Raycast to find which pet was clicked
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      // Check front pet first
+      const idlePets = pets.filter(p => p.state === 'idle');
+      for (const pet of idlePets) {
+        const intersects = raycaster.intersectObject(pet.group, true);
+        if (intersects.length > 0) {
+          activeChatPetId = pet.id;
+          playPetAnim(pet, 'Wave', { loop: false });
+          setTimeout(() => { if (pet.state === 'idle') playPetAnim(pet, 'Idle'); }, 1500);
+          setBubble(`나는 ${pet.name}! 할 일을 말해줘!`);
+          document.getElementById('chatContainer').classList.add('visible');
+          document.getElementById('chatInput').focus();
+          document.querySelector('.chat-input').style.borderColor = pet.color;
+          break;
+        }
+      }
+    });
+
     // --- Animation loop ---
     const clock = new THREE.Clock();
 
@@ -332,44 +346,77 @@
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
 
-      if (mixer) mixer.update(delta);
+      pets.forEach(pet => {
+        if (pet.mixer) pet.mixer.update(delta);
 
-      if (state === 'idle' || state === 'chatting') {
-        charGroup.position.x = 0;
-        charGroup.rotation.y = 0;
-        if (robot) {
-          robot.rotation.y += (mouseX * 0.5 - robot.rotation.y) * 0.05;
+        if (pet.state === 'idle') {
+          const dx = pet.targetX - pet.group.position.x;
+          const dz = pet.targetZ - pet.group.position.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+
+          pet.group.position.x += dx * 0.05;
+          pet.group.position.z += dz * 0.05;
+          pet.group.visible = true;
+
+          if (dist > 0.15) {
+            pet.group.rotation.y = Math.atan2(dx, dz);
+            if (!pet._walking) {
+              playPetAnim(pet, 'Walking');
+              pet._walking = true;
+            }
+          } else {
+            pet.group.rotation.y += (0 - pet.group.rotation.y) * 0.05;
+            if (pet._walking) {
+              playPetAnim(pet, 'Idle');
+              pet._walking = false;
+            }
+          }
+
+          // Smooth scale transition
+          const cs = pet.model.scale.x;
+          const ts = pet.targetScale || 0.18;
+          const ns = cs + (ts - cs) * 0.1;
+          pet.model.scale.set(ns, ns, ns);
         }
-        shadow.visible = true;
-        shadow.position.x = 0;
-      }
 
-      if (state === 'running-away') {
-        charGroup.position.x += 0.08;
-        charGroup.rotation.y = Math.PI / 2;
-        if (charGroup.position.x > 5) {
-          state = 'gone';
-          charGroup.visible = false;
-          shadow.visible = false;
-          document.getElementById('bubble').classList.add('hidden');
+        if (pet.state === 'running-away') {
+          pet.group.position.x += 0.1;
+          pet.group.rotation.y = Math.PI / 2;
+          if (pet.group.position.x > 6) {
+            pet.state = 'gone';
+            pet.group.visible = false;
+            updateQueue();
+          }
         }
-      }
 
-      if (state === 'coming-back') {
-        charGroup.position.x += (0 - charGroup.position.x) * 0.06;
-        charGroup.rotation.y = -Math.PI / 2;
-        if (Math.abs(charGroup.position.x) < 0.1) {
-          charGroup.position.x = 0;
-          charGroup.rotation.y = 0;
-          state = 'idle';
-          playAnimation('ThumbsUp', { loop: false });
-          setTimeout(() => {
-            if (state === 'idle') playAnimation('Idle');
-          }, 2000);
+        if (pet.state === 'coming-back') {
+          const idleCount = pets.filter(p => p.state === 'idle').length;
+          const targetX = -0.5 + idleCount * 0.5;
+          const targetZ = -idleCount * 0.6;
+          const targetS = 0.18 - idleCount * 0.03;
+
+          // Set scale immediately before entering
+          pet.model.scale.set(targetS, targetS, targetS);
+          pet.targetScale = targetS;
+
+          pet.group.position.x += (targetX - pet.group.position.x) * 0.05;
+          pet.group.position.z += (targetZ - pet.group.position.z) * 0.05;
+          pet.group.rotation.y += (0 - pet.group.rotation.y) * 0.05;
+
+          if (Math.abs(pet.group.position.x - targetX) < 0.1) {
+            pet.state = 'idle';
+            pet.returnedAt = Date.now();
+            pet.targetX = targetX;
+            pet.targetZ = targetZ;
+            playPetAnim(pet, 'ThumbsUp', { loop: false });
+            setTimeout(() => {
+              if (pet.state === 'idle') playPetAnim(pet, 'Idle');
+            }, 2000);
+            updateQueue();
+          }
         }
-      }
+      });
 
-      shadow.position.x = charGroup.position.x;
       renderer.render(scene, camera);
     }
 
