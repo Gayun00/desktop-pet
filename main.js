@@ -1,36 +1,59 @@
-const { app, BrowserWindow, screen, ipcMain, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, globalShortcut } = require('electron');
 const path = require('path');
 
-let petWindow;   // desktop pet (transparent overlay)
-let appWindow;   // workspace window (the "office")
+// --- Pet definitions ---
+const PET_CONFIGS = [
+  { id: 'pet-1', name: '보라', color: '#7C6FF7', offsetX: 0 },
+  { id: 'pet-2', name: '민트', color: '#4ECDC4', offsetX: 320 },
+  { id: 'pet-3', name: '코랄', color: '#FF6B6B', offsetX: 640 },
+];
 
-function createPetWindow() {
+let pets = [];       // { id, name, color, window, state, returnedAt }
+let appWindow = null;
+
+function createPetWindow(config) {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-  petWindow = new BrowserWindow({
-    width: 300,
-    height: 400,
-    x: width - 350,
-    y: height - 450,
+  const win = new BrowserWindow({
+    width: 160,
+    height: 280,
+    x: width - 180 - config.offsetX * 0.55,
+    y: height - 300,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
     resizable: false,
-    skipTaskbar: false,
+    skipTaskbar: true,
     hasShadow: false,
-    focusable: true,
+    focusable: false,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
     },
   });
 
-  petWindow.loadFile('pet.html');
-  petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  win.loadFile('pet.html');
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  petWindow.on('closed', () => {
-    petWindow = null;
+  // Send config after load
+  win.webContents.once('did-finish-load', () => {
+    win.webContents.send('init-pet', config);
   });
+
+  const pet = {
+    id: config.id,
+    name: config.name,
+    color: config.color,
+    window: win,
+    state: 'idle',      // idle, working, gone
+    returnedAt: Date.now(),
+  };
+
+  win.on('closed', () => {
+    pet.window = null;
+  });
+
+  return pet;
 }
 
 function createAppWindow() {
@@ -40,8 +63,8 @@ function createAppWindow() {
   }
 
   appWindow = new BrowserWindow({
-    width: 600,
-    height: 500,
+    width: 700,
+    height: 550,
     title: 'Desktop Pet Office',
     frame: true,
     resizable: true,
@@ -58,64 +81,106 @@ function createAppWindow() {
   });
 }
 
+// --- Get idle pets sorted by most recently returned ---
+function getIdlePetsByRecent() {
+  return pets
+    .filter(p => p.state === 'idle' && p.window)
+    .sort((a, b) => b.returnedAt - a.returnedAt);
+}
+
+// --- App ready ---
 app.whenReady().then(() => {
-  createPetWindow();
+  // Create all 3 pets
+  PET_CONFIGS.forEach(config => {
+    pets.push(createPetWindow(config));
+  });
+
+  // Global shortcut: Cmd+Shift+Space → focus most recently returned pet
+  globalShortcut.register('CommandOrControl+Shift+Space', () => {
+    const idlePets = getIdlePetsByRecent();
+    if (idlePets.length > 0) {
+      const pet = idlePets[0];
+      if (pet.window) {
+        pet.window.setFocusable(true);
+        pet.window.focus();
+        pet.window.webContents.send('open-chat');
+      }
+    }
+  });
 });
 
-// macOS: don't quit when all windows close
-app.on('window-all-closed', (e) => {
+app.on('window-all-closed', () => {
   // Do nothing — keep app alive
 });
 
-// Reopen pet window if activated with no windows
 app.on('activate', () => {
-  if (!petWindow) {
-    createPetWindow();
-  }
+  // Recreate pets if needed
+  pets.forEach((pet, i) => {
+    if (!pet.window) {
+      const newPet = createPetWindow(PET_CONFIGS[i]);
+      Object.assign(pet, { window: newPet.window });
+    }
+  });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 // --- IPC handlers ---
 
-// User sent a message → pet runs away, start working
-ipcMain.on('start-task', (event, message) => {
+// Chat closed → make window unfocusable again
+ipcMain.on('chat-closed', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    win.setFocusable(false);
+    win.blur();
+  }
+});
+
+// Pet sends a task
+ipcMain.on('start-task', (event, { petId, message }) => {
+  const pet = pets.find(p => p.id === petId);
+  if (!pet) return;
+
+  pet.state = 'working';
+
   // Tell pet to run away
-  if (petWindow) {
-    petWindow.webContents.send('run-away');
+  if (pet.window) {
+    pet.window.webContents.send('run-away');
   }
 
-  // Open/update office window
+  // Open office
   if (!appWindow) {
     createAppWindow();
   }
 
-  // Wait for pet to finish running animation, then tell office to start
+  // Tell office about new task
   setTimeout(() => {
     if (appWindow) {
-      appWindow.webContents.send('task-started', message);
+      appWindow.webContents.send('task-started', { petId, petName: pet.name, petColor: pet.color, message });
     }
   }, 1000);
 
-  // Simulate task completion after 5 seconds
+  // Simulate task completion after 15-25 seconds (random)
+  const duration = 15000 + Math.random() * 10000;
   setTimeout(() => {
     if (appWindow) {
-      appWindow.webContents.send('task-done', message);
+      appWindow.webContents.send('task-done', { petId, petName: pet.name, message });
     }
 
     // Pet comes back
     setTimeout(() => {
-      if (petWindow) {
-        petWindow.webContents.send('come-back', `"${message}" 다 했어! ✅`);
-      } else {
-        createPetWindow();
-        petWindow.webContents.once('did-finish-load', () => {
-          petWindow.webContents.send('come-back', `"${message}" 다 했어! ✅`);
-        });
+      pet.state = 'idle';
+      pet.returnedAt = Date.now();
+
+      if (pet.window) {
+        pet.window.webContents.send('come-back', `"${message}" 다 했어! ✅`);
       }
     }, 1500);
-  }, 6000);
+  }, duration);
 });
 
-// Open office window
 ipcMain.on('open-office', () => {
   createAppWindow();
 });

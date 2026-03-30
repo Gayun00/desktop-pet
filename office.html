@@ -8,13 +8,13 @@
     body {
       width: 100%;
       height: 100vh;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       overflow: hidden;
     }
 
     .header {
-      padding: 16px 20px;
+      padding: 14px 20px;
       color: white;
       font-size: 14px;
       display: flex;
@@ -22,42 +22,52 @@
       gap: 10px;
     }
 
-    .status-dot {
-      width: 10px;
-      height: 10px;
+    #status-text { font-weight: 500; }
+
+    .tasks-bar {
+      display: flex;
+      gap: 8px;
+      padding: 0 20px 12px;
+      overflow-x: auto;
+    }
+
+    .task-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 6px 14px;
+      color: white;
+      font-size: 12px;
+      white-space: nowrap;
+      animation: chipIn 0.3s ease-out;
+    }
+
+    .task-chip .dot {
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      background: #4ade80;
       animation: pulse 1.5s ease-in-out infinite;
     }
 
-    .status-dot.working { background: #fbbf24; }
+    .task-chip.done { opacity: 0.5; }
+    .task-chip.done .dot { animation: none; }
+
+    @keyframes chipIn {
+      0% { transform: translateY(-10px); opacity: 0; }
+      100% { transform: translateY(0); opacity: 1; }
+    }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-
-    #status-text { font-weight: 500; }
-
-    .task-display {
-      background: rgba(255,255,255,0.15);
-      backdrop-filter: blur(10px);
-      border-radius: 12px;
-      padding: 12px 16px;
-      margin: 0 20px 16px;
-      color: white;
-      font-size: 13px;
-    }
-
-    .task-display .label {
-      font-size: 11px;
-      opacity: 0.7;
-      margin-bottom: 4px;
+      50% { opacity: 0.4; }
     }
 
     #office-canvas {
       width: 100%;
-      height: calc(100vh - 120px);
+      height: calc(100vh - 110px);
     }
 
     .log-panel {
@@ -67,11 +77,11 @@
       right: 0;
       background: rgba(0,0,0,0.3);
       backdrop-filter: blur(10px);
-      padding: 12px 20px;
-      color: rgba(255,255,255,0.8);
-      font-size: 12px;
-      font-family: 'SF Mono', monospace;
-      max-height: 100px;
+      padding: 10px 20px;
+      color: rgba(255,255,255,0.7);
+      font-size: 11px;
+      font-family: 'SF Mono', 'Menlo', monospace;
+      max-height: 90px;
       overflow-y: auto;
     }
 
@@ -88,13 +98,9 @@
 </head>
 <body>
   <div class="header">
-    <div class="status-dot" id="statusDot"></div>
     <span id="status-text">대기 중...</span>
   </div>
-  <div class="task-display" id="taskDisplay" style="display:none;">
-    <div class="label">현재 작업</div>
-    <div id="taskText"></div>
-  </div>
+  <div class="tasks-bar" id="tasksBar"></div>
   <canvas id="office-canvas"></canvas>
   <div class="log-panel" id="logPanel"></div>
 
@@ -102,7 +108,7 @@
     const { ipcRenderer } = require('electron');
     const THREE = require('three');
     const { GLTFLoader } = require('three/examples/jsm/loaders/GLTFLoader.js');
-    const path = require('path');
+    const pathModule = require('path');
 
     // --- Three.js setup ---
     const canvas = document.getElementById('office-canvas');
@@ -125,114 +131,145 @@
     scene.add(dl);
 
     // --- Floor ---
-    const floorGeo = new THREE.PlaneGeometry(12, 12);
-    const floorMat = new THREE.MeshToonMaterial({ color: 0x2a2a4a });
-    const floor = new THREE.Mesh(floorGeo, floorMat);
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(14, 14),
+      new THREE.MeshToonMaterial({ color: 0x2a2a4a })
+    );
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
 
-    const gridHelper = new THREE.GridHelper(12, 12, 0x4a4a6a, 0x3a3a5a);
-    gridHelper.position.y = 0.01;
-    scene.add(gridHelper);
+    const grid = new THREE.GridHelper(14, 14, 0x4a4a6a, 0x3a3a5a);
+    grid.position.y = 0.01;
+    scene.add(grid);
 
     // --- Desks ---
     function createDesk(x, z) {
       const g = new THREE.Group();
-      const top = new THREE.Mesh(
-        new THREE.BoxGeometry(1.2, 0.08, 0.8),
-        new THREE.MeshToonMaterial({ color: 0x8B7355 })
-      );
+      const top = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.8), new THREE.MeshToonMaterial({ color: 0x8B7355 }));
       top.position.y = 0.6;
       g.add(top);
-      const monitor = new THREE.Mesh(
-        new THREE.BoxGeometry(0.6, 0.4, 0.05),
-        new THREE.MeshToonMaterial({ color: 0x333333 })
-      );
-      monitor.position.set(0, 0.95, -0.2);
-      g.add(monitor);
-      const screenMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.5, 0.3),
-        new THREE.MeshBasicMaterial({ color: 0x66aaff })
-      );
-      screenMesh.position.set(0, 0.95, -0.17);
-      g.add(screenMesh);
+      const mon = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.05), new THREE.MeshToonMaterial({ color: 0x333333 }));
+      mon.position.set(0, 0.95, -0.2);
+      g.add(mon);
+      const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.3), new THREE.MeshBasicMaterial({ color: 0x66aaff }));
+      scr.position.set(0, 0.95, -0.17);
+      g.add(scr);
       g.position.set(x, 0, z);
       return g;
     }
 
-    scene.add(createDesk(-2.5, -1));
+    scene.add(createDesk(-3, -1));
     scene.add(createDesk(0, -2));
-    scene.add(createDesk(2.5, -1));
+    scene.add(createDesk(3, -1));
+    scene.add(createDesk(-1.5, 1));
+    scene.add(createDesk(1.5, 1));
 
-    // --- Load Robot ---
-    const charGroup = new THREE.Group();
-    charGroup.visible = false;
-    scene.add(charGroup);
+    // --- Worker agents in office ---
+    const workers = {}; // petId → { group, mixer, animations, currentAction, state, targetPos, wpIndex }
 
-    let mixer = null;
-    let animations = {};
-    let currentAction = null;
-    let robot = null;
+    const waypoints = [
+      { x: -3, z: 0 }, { x: 0, z: -1 }, { x: 3, z: 0 },
+      { x: -1.5, z: 2 }, { x: 1.5, z: 2 }, { x: 0, z: 0 },
+      { x: -2, z: 3 }, { x: 2, z: 3 },
+    ];
 
-    const loader = new GLTFLoader();
-    const modelPath = path.join(__dirname, 'assets', 'robot.glb');
-
-    loader.load(modelPath, (gltf) => {
-      robot = gltf.scene;
-      robot.scale.set(0.4, 0.4, 0.4);
-      charGroup.add(robot);
-
-      mixer = new THREE.AnimationMixer(robot);
-      gltf.animations.forEach((clip) => {
-        animations[clip.name] = mixer.clipAction(clip);
+    function applyColor(obj, hexColor) {
+      const color = new THREE.Color(hexColor);
+      obj.traverse((child) => {
+        if (child.isMesh && child.material) {
+          const mat = child.material.clone();
+          const origColor = mat.color ? mat.color.clone() : new THREE.Color(1, 1, 1);
+          const lum = origColor.r * 0.299 + origColor.g * 0.587 + origColor.b * 0.114;
+          if (lum > 0.3 && lum < 0.9) {
+            mat.color.lerp(color, 0.6);
+          }
+          child.material = mat;
+        }
       });
-    });
+    }
 
-    function playAnimation(name, options = {}) {
-      if (!animations[name]) return;
-      const newAction = animations[name];
-      if (currentAction && currentAction !== newAction) {
-        currentAction.fadeOut(0.2);
+    function spawnWorker(petId, petColor, callback) {
+      const loader = new GLTFLoader();
+      const modelPath = pathModule.join(__dirname, 'assets', 'robot.glb');
+
+      loader.load(modelPath, (gltf) => {
+        const group = new THREE.Group();
+        const model = gltf.scene;
+        model.scale.set(0.35, 0.35, 0.35);
+        applyColor(model, petColor);
+        group.add(model);
+
+        // Name label (sprite)
+        const spCanvas = document.createElement('canvas');
+        spCanvas.width = 128;
+        spCanvas.height = 32;
+        const ctx = spCanvas.getContext('2d');
+        ctx.fillStyle = petColor;
+        ctx.beginPath();
+        ctx.roundRect(0, 0, 128, 32, 10);
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(petId.replace('pet-', '#'), 64, 22);
+        const tex = new THREE.CanvasTexture(spCanvas);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+        sp.scale.set(0.6, 0.15, 1);
+        sp.position.y = 1.2;
+        group.add(sp);
+
+        group.position.set(8, 0, Math.random() * 4 - 2);
+        scene.add(group);
+
+        const mix = new THREE.AnimationMixer(model);
+        const anims = {};
+        gltf.animations.forEach(clip => {
+          anims[clip.name] = mix.clipAction(clip);
+        });
+
+        const worker = {
+          group,
+          mixer: mix,
+          animations: anims,
+          currentAction: null,
+          state: 'entering',
+          targetPos: new THREE.Vector3(0, 0, 0),
+          wpIndex: Math.floor(Math.random() * waypoints.length),
+        };
+
+        workers[petId] = worker;
+        playWorkerAnim(worker, 'Running', { timeScale: 1.5 });
+        if (callback) callback(worker);
+      });
+    }
+
+    function playWorkerAnim(worker, name, options = {}) {
+      if (!worker.animations[name]) return;
+      const newAction = worker.animations[name];
+      if (worker.currentAction && worker.currentAction !== newAction) {
+        worker.currentAction.fadeOut(0.2);
       }
       newAction.reset();
       newAction.fadeIn(0.2);
       newAction.setLoop(options.loop !== false ? THREE.LoopRepeat : THREE.LoopOnce);
       if (options.timeScale) newAction.timeScale = options.timeScale;
       newAction.play();
-      currentAction = newAction;
+      worker.currentAction = newAction;
     }
 
-    // --- Waypoints ---
-    const waypoints = [
-      { x: -2.5, z: 0 },
-      { x: 0, z: -1 },
-      { x: 2.5, z: 0 },
-      { x: 1, z: 2 },
-      { x: -1, z: 2 },
-      { x: 0, z: 0 },
-    ];
-
-    let currentWP = 0;
-    let targetPos = new THREE.Vector3(0, 0, 0);
-    let officeState = 'idle';
-
-    function pickNextWaypoint() {
-      currentWP = (currentWP + 1) % waypoints.length;
-      targetPos.set(waypoints[currentWP].x, 0, waypoints[currentWP].z);
+    function pickWP(worker) {
+      worker.wpIndex = (worker.wpIndex + 1) % waypoints.length;
+      const wp = waypoints[worker.wpIndex];
+      worker.targetPos.set(wp.x, 0, wp.z);
     }
 
     // --- Logs ---
-    const logMessages = [
-      '코드 분석 중...',
-      'Sentry 이슈 확인 중...',
-      '관련 파일 검색 중...',
-      '수정 방안 검토 중...',
-      '테스트 실행 중...',
-      '결과 정리 중...',
-      'Slack 메시지 확인...',
-      'Jira 티켓 업데이트 중...',
+    const logMsgs = [
+      '코드 분석 중...', 'Sentry 이슈 확인 중...', '관련 파일 검색 중...',
+      '수정 방안 검토 중...', '테스트 실행 중...', '결과 정리 중...',
+      'Slack 메시지 확인...', 'Jira 티켓 업데이트 중...',
     ];
-    let logIndex = 0;
+    let logIdx = 0;
 
     function addLog(msg) {
       const panel = document.getElementById('logPanel');
@@ -244,43 +281,58 @@
       panel.scrollTop = panel.scrollHeight;
     }
 
+    function addTaskChip(petName, petColor, message) {
+      const bar = document.getElementById('tasksBar');
+      const chip = document.createElement('div');
+      chip.className = 'task-chip';
+      chip.id = `chip-${petName}`;
+      chip.innerHTML = `<span class="dot" style="background:${petColor}"></span>${petName}: ${message}`;
+      bar.appendChild(chip);
+    }
+
+    function completeTaskChip(petName) {
+      const chip = document.getElementById(`chip-${petName}`);
+      if (chip) chip.classList.add('done');
+    }
+
     // --- IPC ---
-    ipcRenderer.on('task-started', (event, msg) => {
-      officeState = 'entering';
-      charGroup.visible = true;
-      charGroup.position.set(8, 0, 0);
-      playAnimation('Running', { timeScale: 1.5 });
+    ipcRenderer.on('task-started', (event, { petId, petName, petColor, message }) => {
+      addTaskChip(petName, petColor, message);
+      addLog(`🏃 ${petName}이(가) 달려오는 중...`);
+      document.getElementById('status-text').textContent = `${Object.keys(workers).length + 1}마리 작업 중...`;
 
-      document.getElementById('statusDot').classList.add('working');
-      document.getElementById('status-text').textContent = '도착 중...';
-      document.getElementById('taskDisplay').style.display = 'block';
-      document.getElementById('taskText').textContent = msg;
-      addLog(`🏃 캐릭터가 달려오는 중...`);
+      spawnWorker(petId, petColor, (worker) => {
+        setTimeout(() => {
+          if (worker.state === 'entering') {
+            worker.state = 'working';
+            pickWP(worker);
+            playWorkerAnim(worker, 'Running');
+            addLog(`📋 ${petName}: "${message}" 작업 시작!`);
+          }
+        }, 1500);
 
-      setTimeout(() => {
-        if (officeState === 'entering') {
-          officeState = 'working';
-          pickNextWaypoint();
-          playAnimation('Running');
-          addLog(`📋 새 작업: "${msg}"`);
-          document.getElementById('status-text').textContent = '작업 중...';
-        }
-      }, 2000);
-
-      const logInterval = setInterval(() => {
-        if (officeState === 'exiting' || officeState === 'idle') { clearInterval(logInterval); return; }
-        addLog(logMessages[logIndex % logMessages.length]);
-        logIndex++;
-      }, 1200);
+        // Periodic logs
+        const interval = setInterval(() => {
+          if (worker.state === 'exiting' || worker.state === 'gone') { clearInterval(interval); return; }
+          addLog(`${petName}: ${logMsgs[logIdx % logMsgs.length]}`);
+          logIdx++;
+        }, 1500);
+      });
     });
 
-    ipcRenderer.on('task-done', (event, msg) => {
-      officeState = 'exiting';
-      playAnimation('Running', { timeScale: 1.5 });
-      addLog(`✅ 완료! "${msg}"`);
-      addLog(`🏃 캐릭터가 돌아가는 중...`);
-      document.getElementById('statusDot').classList.remove('working');
-      document.getElementById('status-text').textContent = '완료! 돌아가는 중...';
+    ipcRenderer.on('task-done', (event, { petId, petName, message }) => {
+      const worker = workers[petId];
+      if (worker) {
+        worker.state = 'exiting';
+        playWorkerAnim(worker, 'Running', { timeScale: 1.5 });
+        addLog(`✅ ${petName}: "${message}" 완료!`);
+        addLog(`🏃 ${petName}이(가) 돌아가는 중...`);
+        completeTaskChip(petName);
+      }
+
+      // Update status
+      const active = Object.values(workers).filter(w => w.state === 'working' || w.state === 'entering').length;
+      document.getElementById('status-text').textContent = active > 0 ? `${active}마리 작업 중...` : '모두 완료!';
     });
 
     // --- Animation ---
@@ -289,49 +341,46 @@
     function animate() {
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
-      const t = clock.getElapsedTime();
 
-      if (mixer) mixer.update(delta);
+      Object.entries(workers).forEach(([id, w]) => {
+        if (w.mixer) w.mixer.update(delta);
 
-      if (officeState === 'entering') {
-        const enterTarget = new THREE.Vector3(0, 0, 0);
-        const dx = enterTarget.x - charGroup.position.x;
-        const dz = enterTarget.z - charGroup.position.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-
-        if (dist > 0.3) {
-          const speed = 0.1;
-          charGroup.position.x += (dx / dist) * speed;
-          charGroup.position.z += (dz / dist) * speed;
-          charGroup.rotation.y = Math.atan2(dx, dz);
+        if (w.state === 'entering') {
+          const dx = 0 - w.group.position.x;
+          const dz = 0 - w.group.position.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist > 0.5) {
+            const speed = 0.1;
+            w.group.position.x += (dx / dist) * speed;
+            w.group.position.z += (dz / dist) * speed;
+            w.group.rotation.y = Math.atan2(dx, dz);
+          }
         }
-      }
 
-      if (officeState === 'working') {
-        const dx = targetPos.x - charGroup.position.x;
-        const dz = targetPos.z - charGroup.position.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-
-        if (dist > 0.3) {
-          const speed = 0.05;
-          charGroup.position.x += (dx / dist) * speed;
-          charGroup.position.z += (dz / dist) * speed;
-          charGroup.rotation.y = Math.atan2(dx, dz);
-        } else {
-          pickNextWaypoint();
+        if (w.state === 'working') {
+          const dx = w.targetPos.x - w.group.position.x;
+          const dz = w.targetPos.z - w.group.position.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist > 0.3) {
+            const speed = 0.04;
+            w.group.position.x += (dx / dist) * speed;
+            w.group.position.z += (dz / dist) * speed;
+            w.group.rotation.y = Math.atan2(dx, dz);
+          } else {
+            pickWP(w);
+          }
         }
-      }
 
-      if (officeState === 'exiting') {
-        charGroup.position.x -= 0.1;
-        charGroup.rotation.y = -Math.PI / 2;
-
-        if (charGroup.position.x < -8) {
-          officeState = 'idle';
-          charGroup.visible = false;
-          document.getElementById('status-text').textContent = '돌아갔어!';
+        if (w.state === 'exiting') {
+          w.group.position.x -= 0.1;
+          w.group.rotation.y = -Math.PI / 2;
+          if (w.group.position.x < -8) {
+            w.state = 'gone';
+            scene.remove(w.group);
+            delete workers[id];
+          }
         }
-      }
+      });
 
       renderer.render(scene, camera);
     }
