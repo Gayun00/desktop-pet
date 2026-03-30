@@ -43,11 +43,8 @@
     .theme-btn:hover { border-color: white; transform: scale(1.1); }
     .theme-btn.active { border-color: white; box-shadow: 0 0 8px rgba(255,255,255,0.5); }
 
-    .theme-btn[data-theme="office"] { background: linear-gradient(135deg, #2a2a4a, #4a4a6a); }
-    .theme-btn[data-theme="restaurant"] { background: linear-gradient(135deg, #ff8844, #ffcc44); }
-    .theme-btn[data-theme="furniture"] { background: linear-gradient(135deg, #aa8866, #ddbb88); }
+    .theme-btn[data-theme="platformer"] { background: linear-gradient(135deg, #4a9eff, #ffcc00); }
     .theme-btn[data-theme="forest"] { background: linear-gradient(135deg, #2d5016, #4a8c2a); }
-    .theme-btn[data-theme="space"] { background: linear-gradient(135deg, #0a0a2e, #1a0a3e); }
 
     .tasks-bar {
       display: flex;
@@ -119,11 +116,8 @@
   <div class="header">
     <span id="status-text">대기 중...</span>
     <div class="theme-selector">
-      <div class="theme-btn active" data-theme="office" title="사무실"></div>
-      <div class="theme-btn" data-theme="restaurant" title="레스토랑"></div>
-      <div class="theme-btn" data-theme="furniture" title="사무실"></div>
+      <div class="theme-btn active" data-theme="platformer" title="플랫포머"></div>
       <div class="theme-btn" data-theme="forest" title="숲"></div>
-      <div class="theme-btn" data-theme="space" title="우주"></div>
     </div>
   </div>
   <div class="tasks-bar" id="tasksBar"></div>
@@ -172,371 +166,40 @@
 
     const themes = {
 
-      // --- OFFICE ---
-      office: {
-        bg: 0x1a1a2e,
-        floor: { color: 0x2a2a4a },
-        ambient: { color: 0xffffff, intensity: 0.6 },
-        dirLight: { color: 0xffffff, intensity: 1.0 },
+      // --- PLATFORMER (KayKit) ---
+      platformer: {
+        bg: 0x88ccff,
+        floor: { color: 0xddbb77 },
+        ambient: { color: 0xffffff, intensity: 0.9 },
+        dirLight: { color: 0xffffff, intensity: 1.3 },
         fog: null,
         build(group) {
-          // Grid
-          const grid = new THREE.GridHelper(14, 14, 0x4a4a6a, 0x3a3a5a);
-          grid.position.y = 0.02;
-          group.add(grid);
-
-          // Desks
-          function desk(x, z) {
-            const g = new THREE.Group();
-            const top = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.8), new THREE.MeshToonMaterial({ color: 0x8B7355 }));
-            top.position.y = 0.6; g.add(top);
-            const mon = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.05), new THREE.MeshToonMaterial({ color: 0x333333 }));
-            mon.position.set(0, 0.95, -0.2); g.add(mon);
-            const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.3), new THREE.MeshBasicMaterial({ color: 0x66aaff }));
-            scr.position.set(0, 0.95, -0.17); g.add(scr);
-            // Chair
-            const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.05, 16), new THREE.MeshToonMaterial({ color: 0x444444 }));
-            seat.position.set(0, 0.4, 0.5); g.add(seat);
-            const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.35, 0.05), new THREE.MeshToonMaterial({ color: 0x444444 }));
-            backrest.position.set(0, 0.6, 0.7); g.add(backrest);
-            g.position.set(x, 0, z);
-            return g;
-          }
-          group.add(desk(-3, -1));
-          group.add(desk(0, -2));
-          group.add(desk(3, -1));
-          group.add(desk(-1.5, 1));
-          group.add(desk(1.5, 1));
-
-          // Coffee machine
-          const coffee = new THREE.Group();
-          const body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.25), new THREE.MeshToonMaterial({ color: 0x222222 }));
-          body.position.y = 0.85; coffee.add(body);
-          const coffeeTable = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 0.5), new THREE.MeshToonMaterial({ color: 0x8B7355 }));
-          coffeeTable.position.y = 0.6; coffee.add(coffeeTable);
-          const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.1, 8), new THREE.MeshToonMaterial({ color: 0xeeeeee }));
-          cup.position.set(0.2, 0.7, 0); coffee.add(cup);
-          coffee.position.set(5, 0, -2);
-          group.add(coffee);
-
-          // Plant
-          const plant = new THREE.Group();
-          const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.3, 8), new THREE.MeshToonMaterial({ color: 0xBB6633 }));
-          pot.position.y = 0.15; plant.add(pot);
-          for (let i = 0; i < 5; i++) {
-            const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshToonMaterial({ color: 0x44aa44 }));
-            leaf.position.set(Math.sin(i * 1.3) * 0.12, 0.4 + i * 0.06, Math.cos(i * 1.3) * 0.12);
-            plant.add(leaf);
-          }
-          plant.position.set(-5, 0, -2);
-          group.add(plant);
-
-          // Whiteboard
-          const wb = new THREE.Group();
-          const board = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 0.05), new THREE.MeshToonMaterial({ color: 0xeeeeee }));
-          board.position.y = 1.5; wb.add(board);
-          const frame = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.3, 0.03), new THREE.MeshToonMaterial({ color: 0x888888 }));
-          frame.position.set(0, 1.5, -0.02); wb.add(frame);
-          wb.position.set(0, 0, -5);
-          group.add(wb);
+          gltfLoader.load(pathModule.join(__dirname, 'assets', 'platformer_level.glb'), (gltf) => {
+            const level = gltf.scene;
+            const s = 0.3;
+            level.scale.set(s, s, s);
+            level.position.set(-4.8, -0.1, -4.8);
+            group.add(level);
+          });
         }
       },
 
       // --- RESTAURANT (KayKit) ---
-      restaurant: {
-        bg: 0x2a2015,
-        floor: { color: 0x333333 },
-        ambient: { color: 0xffe8cc, intensity: 0.8 },
-        dirLight: { color: 0xffddaa, intensity: 1.2 },
-        fog: null,
+      // --- FOREST (LowPolyTreePack) ---
+      forest: {
+        bg: 0x87CEEB,
+        floor: { color: 0x4a8c2a },
+        ambient: { color: 0xfff5e1, intensity: 0.9 },
+        dirLight: { color: 0xfff0c0, intensity: 1.3 },
+        fog: { color: 0xc8e6c8, near: 10, far: 30 },
         build(group) {
-          gltfLoader.load(pathModule.join(__dirname, 'assets', 'restaurant_level.glb'), (gltf) => {
+          gltfLoader.load(pathModule.join(__dirname, 'assets', 'forest_level.glb'), (gltf) => {
             const level = gltf.scene;
-            const s = 0.3;
-            level.scale.set(s, s, s);
-            // Center: 20*0.3/2=3, 16*0.3/2=2.4
-            level.position.set(-3, 0, -2.4);
-            group.add(level);
-          });
-        }
-      },
-
-      // --- FURNITURE OFFICE ---
-      furniture: {
-        bg: 0xddeeff,
-        floor: { color: 0xccbb99 },
-        ambient: { color: 0xffffff, intensity: 0.9 },
-        dirLight: { color: 0xffffff, intensity: 1.2 },
-        fog: null,
-        build(group) {
-          gltfLoader.load(pathModule.join(__dirname, 'assets', 'office_level.glb'), (gltf) => {
-            const level = gltf.scene;
-            const s = 0.5;
+            const s = 0.45;
             level.scale.set(s, s, s);
             level.position.set(0, 0, 0);
             group.add(level);
           });
-        }
-      },
-
-      // --- FOREST ---
-      forest: {
-        bg: 0x87CEEB,
-        floor: { color: 0x4a8c2a },
-        ambient: { color: 0xfff5e1, intensity: 0.8 },
-        dirLight: { color: 0xfff0c0, intensity: 1.2 },
-        fog: { color: 0xc8e6c8, near: 8, far: 25 },
-        build(group) {
-          // Grass patches
-          for (let i = 0; i < 30; i++) {
-            const grass = new THREE.Mesh(
-              new THREE.ConeGeometry(0.05, 0.15, 4),
-              new THREE.MeshToonMaterial({ color: new THREE.Color().setHSL(0.3, 0.6 + Math.random() * 0.3, 0.35 + Math.random() * 0.15) })
-            );
-            grass.position.set((Math.random() - 0.5) * 12, 0.07, (Math.random() - 0.5) * 10);
-            group.add(grass);
-          }
-
-          // Trees
-          function tree(x, z, scale = 1) {
-            const g = new THREE.Group();
-            const trunk = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.1 * scale, 0.15 * scale, 1.2 * scale, 6),
-              new THREE.MeshToonMaterial({ color: 0x8B5A2B })
-            );
-            trunk.position.y = 0.6 * scale; g.add(trunk);
-
-            // Foliage layers
-            const colors = [0x2d7a1e, 0x3a9c2a, 0x45b530];
-            for (let i = 0; i < 3; i++) {
-              const foliage = new THREE.Mesh(
-                new THREE.ConeGeometry((0.6 - i * 0.12) * scale, 0.7 * scale, 7),
-                new THREE.MeshToonMaterial({ color: colors[i] })
-              );
-              foliage.position.y = (1.2 + i * 0.45) * scale;
-              g.add(foliage);
-            }
-            g.position.set(x, 0, z);
-            return g;
-          }
-
-          group.add(tree(-4, -3, 1.2));
-          group.add(tree(4.5, -2, 1.0));
-          group.add(tree(-2, -4.5, 0.8));
-          group.add(tree(5.5, -4, 0.7));
-          group.add(tree(-5.5, 0, 1.1));
-          group.add(tree(3, 3, 0.6));
-
-          // Rocks
-          function rock(x, z, s) {
-            const geo = new THREE.DodecahedronGeometry(s, 0);
-            const mat = new THREE.MeshToonMaterial({ color: 0x888888 });
-            const m = new THREE.Mesh(geo, mat);
-            m.position.set(x, s * 0.5, z);
-            m.rotation.set(Math.random(), Math.random(), 0);
-            return m;
-          }
-          group.add(rock(-3, 2, 0.3));
-          group.add(rock(2, -1, 0.2));
-          group.add(rock(4, 1.5, 0.15));
-
-          // Flowers
-          for (let i = 0; i < 12; i++) {
-            const flower = new THREE.Group();
-            const stem = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.02, 0.02, 0.25, 4),
-              new THREE.MeshToonMaterial({ color: 0x44aa44 })
-            );
-            stem.position.y = 0.12; flower.add(stem);
-            const petal = new THREE.Mesh(
-              new THREE.SphereGeometry(0.06, 6, 6),
-              new THREE.MeshToonMaterial({ color: [0xff6b9d, 0xffa500, 0xff4444, 0xffff44, 0xff69b4][i % 5] })
-            );
-            petal.position.y = 0.28; flower.add(petal);
-            flower.position.set((Math.random() - 0.5) * 10, 0, (Math.random() - 0.5) * 8);
-            group.add(flower);
-          }
-
-          // Mushrooms
-          function mushroom(x, z) {
-            const g = new THREE.Group();
-            const ms = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.15, 6), new THREE.MeshToonMaterial({ color: 0xeeddcc }));
-            ms.position.y = 0.075; g.add(ms);
-            const cap = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshToonMaterial({ color: 0xcc3333 }));
-            cap.position.y = 0.15; g.add(cap);
-            // Dots
-            for (let i = 0; i < 3; i++) {
-              const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 4, 4), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-              dot.position.set(Math.sin(i * 2.1) * 0.07, 0.18, Math.cos(i * 2.1) * 0.07);
-              g.add(dot);
-            }
-            g.position.set(x, 0, z);
-            return g;
-          }
-          group.add(mushroom(-1, 3));
-          group.add(mushroom(3, -3));
-
-          // Pond
-          const pond = new THREE.Mesh(
-            new THREE.CircleGeometry(0.8, 16),
-            new THREE.MeshToonMaterial({ color: 0x4488cc, transparent: true, opacity: 0.7 })
-          );
-          pond.rotation.x = -Math.PI / 2;
-          pond.position.set(1, 0.02, 2.5);
-          group.add(pond);
-
-          // Flying birds (animated GLB models)
-          const birdConfigs = [
-            { file: 'flamingo.glb', pos: [-2, 3.5, -2], scale: 0.008, speed: 1.2 },
-            { file: 'parrot.glb', pos: [3, 4, 0], scale: 0.008, speed: 1.0 },
-            { file: 'stork.glb', pos: [0, 3, 3], scale: 0.008, speed: 0.8 },
-          ];
-          birdConfigs.forEach(bc => {
-            gltfLoader.load(pathModule.join(__dirname, 'assets', bc.file), (gltf) => {
-              const bird = gltf.scene;
-              bird.scale.set(bc.scale, bc.scale, bc.scale);
-              bird.position.set(...bc.pos);
-              group.add(bird);
-              if (gltf.animations.length > 0) {
-                const mix = new THREE.AnimationMixer(bird);
-                mix.clipAction(gltf.animations[0]).play();
-                bird.userData.mixer = mix;
-                bird.userData.centerX = bc.pos[0];
-                bird.userData.centerZ = bc.pos[2];
-                bird.userData.radius = 2 + Math.random() * 2;
-                bird.userData.speed = bc.speed;
-                bird.name = 'bird';
-                animatedObjects.push({ mixer: mix, obj: bird });
-              }
-            });
-          });
-
-          // Flower models
-          const flowerPositions = [[-2, 0, 1], [1.5, 0, -1], [-0.5, 0, 3.5], [3.5, 0, 2], [-4, 0, 2]];
-          flowerPositions.forEach(fp => {
-            gltfLoader.load(pathModule.join(__dirname, 'assets', 'flower.glb'), (gltf) => {
-              const fl = gltf.scene;
-              fl.scale.set(1.5, 1.5, 1.5);
-              fl.position.set(...fp);
-              fl.rotation.y = Math.random() * Math.PI * 2;
-              group.add(fl);
-            });
-          });
-        }
-      },
-
-      // --- SPACE ---
-      space: {
-        bg: 0x050510,
-        floor: { color: 0x111133 },
-        ambient: { color: 0x4444ff, intensity: 0.4 },
-        dirLight: { color: 0x8888ff, intensity: 0.8 },
-        fog: null,
-        build(group) {
-          // Neon grid
-          const neonGrid = new THREE.GridHelper(14, 14, 0x0066ff, 0x003388);
-          neonGrid.position.y = 0.02;
-          neonGrid.material.opacity = 0.5;
-          neonGrid.material.transparent = true;
-          group.add(neonGrid);
-
-          // Stars
-          const starGeo = new THREE.BufferGeometry();
-          const starPositions = [];
-          for (let i = 0; i < 300; i++) {
-            starPositions.push(
-              (Math.random() - 0.5) * 30,
-              Math.random() * 15 + 2,
-              (Math.random() - 0.5) * 30
-            );
-          }
-          starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
-          const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.05 });
-          group.add(new THREE.Points(starGeo, starMat));
-
-          // Planet 1
-          const planet1 = new THREE.Mesh(
-            new THREE.SphereGeometry(1.5, 16, 16),
-            new THREE.MeshToonMaterial({ color: 0xff6644, emissive: 0x331100, emissiveIntensity: 0.3 })
-          );
-          planet1.position.set(-6, 6, -10);
-          group.add(planet1);
-          // Ring
-          const ring = new THREE.Mesh(
-            new THREE.RingGeometry(2.0, 2.5, 32),
-            new THREE.MeshBasicMaterial({ color: 0xffaa66, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
-          );
-          ring.rotation.x = Math.PI / 3;
-          ring.position.copy(planet1.position);
-          group.add(ring);
-
-          // Planet 2 (small moon)
-          const moon = new THREE.Mesh(
-            new THREE.SphereGeometry(0.5, 12, 12),
-            new THREE.MeshToonMaterial({ color: 0xccccdd })
-          );
-          moon.position.set(5, 4, -8);
-          group.add(moon);
-
-          // Space station panels
-          function panel(x, z, h) {
-            const g = new THREE.Group();
-            const post = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.05, 0.05, h, 6),
-              new THREE.MeshToonMaterial({ color: 0x444466 })
-            );
-            post.position.y = h / 2; g.add(post);
-            const screen = new THREE.Mesh(
-              new THREE.BoxGeometry(0.8, 0.5, 0.05),
-              new THREE.MeshBasicMaterial({ color: 0x00ffaa })
-            );
-            screen.position.y = h; g.add(screen);
-            // Glow
-            const glow = new THREE.PointLight(0x00ffaa, 0.5, 3);
-            glow.position.y = h;
-            g.add(glow);
-            g.position.set(x, 0, z);
-            return g;
-          }
-          group.add(panel(-4, -2, 1.5));
-          group.add(panel(4, -2, 1.5));
-          group.add(panel(0, -4, 1.8));
-
-          // Hologram pad
-          const pad = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.5, 0.5, 0.05, 16),
-            new THREE.MeshBasicMaterial({ color: 0x0044ff, transparent: true, opacity: 0.3 })
-          );
-          pad.position.set(0, 0.03, 0);
-          group.add(pad);
-          // Hologram beam
-          const beam = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.3, 0.5, 2, 16, 1, true),
-            new THREE.MeshBasicMaterial({ color: 0x0088ff, transparent: true, opacity: 0.08, side: THREE.DoubleSide })
-          );
-          beam.position.set(0, 1, 0);
-          group.add(beam);
-
-          // Floating crystals
-          for (let i = 0; i < 5; i++) {
-            const crystal = new THREE.Mesh(
-              new THREE.OctahedronGeometry(0.15, 0),
-              new THREE.MeshToonMaterial({
-                color: [0xff00ff, 0x00ffff, 0xff66ff, 0x66ffff, 0xaa88ff][i],
-                emissive: [0x330033, 0x003333, 0x330033, 0x003333, 0x220044][i],
-                emissiveIntensity: 0.5,
-              })
-            );
-            crystal.position.set(
-              (Math.random() - 0.5) * 8,
-              1 + Math.random() * 2,
-              (Math.random() - 0.5) * 6
-            );
-            crystal.userData.floatOffset = Math.random() * Math.PI * 2;
-            crystal.userData.floatSpeed = 0.5 + Math.random() * 0.5;
-            crystal.name = 'crystal';
-            group.add(crystal);
-          }
         }
       }
     };
@@ -550,7 +213,7 @@
     scene.add(floorMesh);
 
     // --- Apply theme ---
-    let currentTheme = 'office';
+    let currentTheme = 'platformer';
 
     function applyTheme(name) {
       const theme = themes[name];
@@ -596,7 +259,7 @@
     }
 
     // Init
-    applyTheme('office');
+    applyTheme('platformer');
 
     // Theme buttons
     document.querySelectorAll('.theme-btn').forEach(btn => {
@@ -695,7 +358,8 @@
       loader.load(pathModule.join(__dirname, 'assets', 'robot.glb'), (gltf) => {
         const group = new THREE.Group();
         const model = gltf.scene;
-        const workerScale = (currentTheme === 'restaurant' || currentTheme === 'furniture') ? 0.25 : 0.35;
+        const scaleMap = { forest: 0.2, platformer: 0.25 };
+        const workerScale = scaleMap[currentTheme] || 0.35;
         model.scale.set(workerScale, workerScale, workerScale);
         applyColor(model, petColor);
         group.add(model);
@@ -849,15 +513,7 @@
 
       // (city theme has no special animations needed)
 
-      // Animate space crystals
-      if (currentTheme === 'space') {
-        propsGroup.traverse(child => {
-          if (child.name === 'crystal') {
-            child.rotation.y += delta * 0.5;
-            child.position.y = child.position.y + Math.sin(t * child.userData.floatSpeed + child.userData.floatOffset) * 0.002;
-          }
-        });
-      }
+      // (removed space crystal animation)
 
       Object.entries(workers).forEach(([id, w]) => {
         if (w.mixer) w.mixer.update(delta);
