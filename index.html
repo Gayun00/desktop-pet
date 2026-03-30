@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      user-select: none;
+    }
+
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      -webkit-app-region: drag;
+      cursor: pointer;
+    }
+
+    canvas {
+      -webkit-app-region: no-drag;
+    }
+
+    /* Speech bubble */
+    .bubble {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      border-radius: 18px;
+      padding: 12px 18px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      color: #333;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      max-width: 220px;
+      text-align: center;
+      z-index: 10;
+      animation: bubblePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      pointer-events: none;
+    }
+
+    .bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid white;
+    }
+
+    @keyframes bubblePop {
+      0% { transform: translateX(-50%) scale(0); opacity: 0; }
+      100% { transform: translateX(-50%) scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bubble" id="bubble">Hello? 👋</div>
+  <div id="canvas-container"></div>
+
+  <script>
+    const THREE = require('three');
+
+    // --- Scene setup ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, 300 / 300, 0.1, 100);
+    camera.position.set(0, 1.5, 5);
+    camera.lookAt(0, 0.5, 0);
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(300, 300);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setClearColor(0x000000, 0);
+    container.appendChild(renderer.domElement);
+
+    // --- Lighting ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(3, 5, 4);
+    scene.add(dirLight);
+
+    const rimLight = new THREE.DirectionalLight(0x9988ff, 0.3);
+    rimLight.position.set(-3, 2, -2);
+    scene.add(rimLight);
+
+    // --- Slime body ---
+    const bodyGeometry = new THREE.SphereGeometry(1, 32, 32);
+    // Squash bottom to make it slime-like
+    const posAttr = bodyGeometry.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+      const y = posAttr.getY(i);
+      if (y < 0) {
+        posAttr.setY(i, y * 0.4);
+      }
+      // Slightly wider at bottom
+      if (y < 0.2) {
+        const x = posAttr.getX(i);
+        const z = posAttr.getZ(i);
+        const factor = 1 + (0.2 - y) * 0.3;
+        posAttr.setX(i, x * factor);
+        posAttr.setZ(i, z * factor);
+      }
+    }
+    posAttr.needsUpdate = true;
+    bodyGeometry.computeVertexNormals();
+
+    const bodyMaterial = new THREE.MeshToonMaterial({
+      color: 0x7C6FF7,
+      emissive: 0x2a1f6e,
+      emissiveIntensity: 0.1,
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 0.4;
+    scene.add(body);
+
+    // --- Eyes ---
+    function createEye(x) {
+      const eyeGroup = new THREE.Group();
+
+      // White part
+      const whiteGeo = new THREE.SphereGeometry(0.18, 16, 16);
+      const whiteMat = new THREE.MeshToonMaterial({ color: 0xffffff });
+      const white = new THREE.Mesh(whiteGeo, whiteMat);
+      eyeGroup.add(white);
+
+      // Pupil
+      const pupilGeo = new THREE.SphereGeometry(0.1, 16, 16);
+      const pupilMat = new THREE.MeshToonMaterial({ color: 0x222222 });
+      const pupil = new THREE.Mesh(pupilGeo, pupilMat);
+      pupil.position.z = 0.1;
+      pupil.name = 'pupil';
+      eyeGroup.add(pupil);
+
+      // Highlight
+      const highlightGeo = new THREE.SphereGeometry(0.04, 8, 8);
+      const highlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const highlight = new THREE.Mesh(highlightGeo, highlightMat);
+      highlight.position.set(0.04, 0.05, 0.16);
+      eyeGroup.add(highlight);
+
+      eyeGroup.position.set(x, 0.85, 0.75);
+      return eyeGroup;
+    }
+
+    const leftEye = createEye(-0.3);
+    const rightEye = createEye(0.3);
+    scene.add(leftEye);
+    scene.add(rightEye);
+
+    // --- Blush ---
+    function createBlush(x) {
+      const blushGeo = new THREE.SphereGeometry(0.12, 16, 16);
+      blushGeo.scale(1.5, 0.8, 0.5);
+      const blushMat = new THREE.MeshBasicMaterial({
+        color: 0xff9999,
+        transparent: true,
+        opacity: 0.4,
+      });
+      const blush = new THREE.Mesh(blushGeo, blushMat);
+      blush.position.set(x, 0.6, 0.85);
+      return blush;
+    }
+
+    scene.add(createBlush(-0.55));
+    scene.add(createBlush(0.55));
+
+    // --- Mouth (cute smile curve) ---
+    const mouthCurve = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(-0.15, 0.5, 0.92),
+      new THREE.Vector3(0, 0.4, 0.95),
+      new THREE.Vector3(0.15, 0.5, 0.92)
+    );
+    const mouthGeo = new THREE.TubeGeometry(mouthCurve, 16, 0.025, 8, false);
+    const mouthMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const mouth = new THREE.Mesh(mouthGeo, mouthMat);
+    scene.add(mouth);
+
+    // --- Shadow ---
+    const shadowGeo = new THREE.CircleGeometry(0.8, 32);
+    const shadowMat = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.1,
+    });
+    const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.01;
+    scene.add(shadow);
+
+    // --- Mouse tracking ---
+    let mouseX = 0, mouseY = 0;
+    document.addEventListener('mousemove', (e) => {
+      mouseX = (e.clientX / 300) * 2 - 1;
+      mouseY = -(e.clientY / 300) * 2 + 1;
+    });
+
+    // --- Click ---
+    const messages = [
+      "Hello? 👋",
+      "오늘도 화이팅! 💪",
+      "뭐 도와줄까?",
+      "에러 없는 하루! ✨",
+      "배포 언제 해?",
+      "커피 한잔 어때? ☕",
+      "PR 리뷰 했어?",
+      "점심 뭐 먹지? 🍜",
+    ];
+
+    renderer.domElement.addEventListener('click', () => {
+      const bubble = document.getElementById('bubble');
+      const randomMsg = messages[Math.floor(Math.random() * messages.length)];
+      bubble.style.animation = 'none';
+      bubble.offsetHeight;
+      bubble.style.animation = 'bubblePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+      bubble.textContent = randomMsg;
+
+      // Squash & stretch on click
+      clickBounce = 1.0;
+    });
+
+    // --- Animation ---
+    let clickBounce = 0;
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // Floating animation
+      const floatY = Math.sin(t * 1.5) * 0.1;
+      body.position.y = 0.4 + floatY;
+      leftEye.position.y = 0.85 + floatY;
+      rightEye.position.y = 0.85 + floatY;
+      mouth.position.y = floatY;
+
+      // Breathing (subtle scale)
+      const breathe = 1 + Math.sin(t * 2) * 0.03;
+      body.scale.set(breathe, 1 / breathe, breathe);
+
+      // Click bounce
+      if (clickBounce > 0.01) {
+        clickBounce *= 0.9;
+        const squash = 1 + clickBounce * 0.3;
+        body.scale.set(squash, 1 / squash, squash);
+      }
+
+      // Eye tracking (follow mouse)
+      const targetX = mouseX * 0.06;
+      const targetY = mouseY * 0.04;
+      [leftEye, rightEye].forEach(eye => {
+        const pupil = eye.getObjectByName('pupil');
+        if (pupil) {
+          pupil.position.x += (targetX - pupil.position.x) * 0.1;
+          pupil.position.y += (targetY - pupil.position.y) * 0.1;
+        }
+      });
+
+      // Blink
+      const blinkCycle = t % 4;
+      if (blinkCycle > 3.8 && blinkCycle < 3.95) {
+        leftEye.scale.y = 0.1;
+        rightEye.scale.y = 0.1;
+      } else {
+        leftEye.scale.y = 1;
+        rightEye.scale.y = 1;
+      }
+
+      // Gentle body tilt toward mouse
+      body.rotation.y += (mouseX * 0.2 - body.rotation.y) * 0.05;
+      body.rotation.x += (-mouseY * 0.1 - body.rotation.x) * 0.05;
+
+      // Shadow pulse
+      const shadowScale = 1 - Math.sin(t * 1.5) * 0.1;
+      shadow.scale.set(shadowScale, shadowScale, 1);
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>

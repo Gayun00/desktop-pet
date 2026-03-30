@@ -169,16 +169,17 @@
       // --- PLATFORMER (KayKit) ---
       platformer: {
         bg: 0x88ccff,
-        floor: { color: 0xddbb77 },
+        floor: { color: 0x88ccff },  // floor matches sky, invisible
         ambient: { color: 0xffffff, intensity: 0.9 },
         dirLight: { color: 0xffffff, intensity: 1.3 },
         fog: null,
         build(group) {
           gltfLoader.load(pathModule.join(__dirname, 'assets', 'platformer_level.glb'), (gltf) => {
             const level = gltf.scene;
-            const s = 0.3;
+            // Scale so 32 units fills ~14 scene units (camera view)
+            const s = 14 / 32;
             level.scale.set(s, s, s);
-            level.position.set(-4.8, -0.1, -4.8);
+            level.position.set(-7, -0.5, 5);
             group.add(level);
           });
         }

@@ -1,16 +1,9 @@
-"""
-Blender: LowPolyTreePack — vertex color를 material에 연결하여 export.
-"""
-import bpy
-import math
-import random
-
-OUTPUT_GLB = "/Users/gygygygy/Documents/code/ai/desktop-pet/assets/forest_level.glb"
-OUTPUT_IMG = "/Users/gygygygy/Documents/code/ai/desktop-pet/assets/preview_forest.png"
-
+"""Forest: vertex color 안 되니까 material 색을 직접 지정."""
+import bpy, math, random
 random.seed(42)
 
-# 사용할 나무 + 위치
+OUTPUT_GLB = "/Users/gygygygy/Documents/code/ai/desktop-pet/assets/forest_level.glb"
+
 tree_layout = {
     'Tree Type1 05 Model': (0, 1, 0),
     'Tree Type1 04 Model': (-2.5, 2, 0),
@@ -29,141 +22,87 @@ tree_layout = {
     'Tree Type0 05 Model': (1, 3, 0),
 }
 
-# 모든 오브젝트 숨기기
+# Hide all
 for obj in bpy.data.objects:
     if obj.type == 'MESH':
         obj.location = (100, 100, 100)
 
-# 선택한 나무만 배치
+# Place trees + force green/brown colors
 for name, (x, y, z) in tree_layout.items():
     obj = bpy.data.objects.get(name)
-    if obj:
-        obj.location = (x, y, z)
-        obj.rotation_euler = (0, 0, random.uniform(0, math.pi * 2))
+    if not obj:
+        continue
+    obj.location = (x, y, z)
+    obj.rotation_euler = (0, 0, random.uniform(0, math.pi * 2))
 
-# === Vertex color → Material 연결 ===
-# 나무 모델들이 vertex color를 가지고 있으면 material에 연결
-for obj in bpy.data.objects:
-    if obj.type == 'MESH' and obj.location.x < 50:  # 숨기지 않은 것만
-        mesh = obj.data
-        if mesh.vertex_colors:
-            # 기존 material이 있으면 vertex color 노드 연결
-            if not obj.data.materials:
-                mat = bpy.data.materials.new(f"VCol_{obj.name}")
-                mat.use_nodes = True
-                obj.data.materials.append(mat)
+    # Replace all materials with simple green or brown
+    for i, mat in enumerate(obj.data.materials):
+        if not mat:
+            continue
+        mat.use_nodes = True
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
 
-            for mat in obj.data.materials:
-                if mat and mat.use_nodes:
-                    nodes = mat.node_tree.nodes
-                    links = mat.node_tree.links
+        # Remove all nodes except output
+        for n in list(nodes):
+            if n.type != 'OUTPUT_MATERIAL':
+                nodes.remove(n)
 
-                    # Check if already has vertex color node
-                    has_vcol = any(n.type == 'VERTEX_COLOR' for n in nodes)
-                    if has_vcol:
-                        continue
+        bsdf = nodes.new('ShaderNodeBsdfPrincipled')
+        output = [n for n in nodes if n.type == 'OUTPUT_MATERIAL'][0]
+        links.new(bsdf.outputs['BSDF'], output.inputs['Surface'])
 
-                    # Find principled BSDF
-                    bsdf = None
-                    for n in nodes:
-                        if n.type == 'BSDF_PRINCIPLED':
-                            bsdf = n
-                            break
+        # Guess color from material name or position
+        mname = mat.name.lower()
+        if 'trunk' in mname or 'bark' in mname or 'wood' in mname or 'branch' in mname:
+            # Brown trunk
+            brown = random.uniform(0.3, 0.5)
+            bsdf.inputs['Base Color'].default_value = (brown, brown * 0.6, brown * 0.3, 1)
+        else:
+            # Green foliage (varied greens)
+            g = random.uniform(0.3, 0.6)
+            bsdf.inputs['Base Color'].default_value = (g * 0.5, g, g * 0.3, 1)
+        bsdf.inputs['Roughness'].default_value = 0.85
 
-                    if bsdf:
-                        vcol = nodes.new('ShaderNodeVertexColor')
-                        vcol.layer_name = mesh.vertex_colors[0].name
-                        links.new(vcol.outputs['Color'], bsdf.inputs['Base Color'])
-        elif obj.data.materials:
-            # No vertex colors but has materials — keep as is
-            pass
-
-# === 바닥 ===
+# Ground
 bpy.ops.mesh.primitive_cylinder_add(radius=6, depth=0.5, location=(0, 0.5, -0.25), vertices=32)
-ground = bpy.context.active_object
-ground.name = "Ground"
-ground.scale = (1, 0.8, 1)
-mat_ground = bpy.data.materials.new("Ground")
-mat_ground.use_nodes = True
-bsdf = mat_ground.node_tree.nodes["Principled BSDF"]
-bsdf.inputs["Base Color"].default_value = (0.45, 0.55, 0.3, 1)
-bsdf.inputs["Roughness"].default_value = 0.9
-ground.data.materials.append(mat_ground)
+g = bpy.context.active_object
+g.name = "Ground"
+g.scale = (1, 0.8, 1)
+mat = bpy.data.materials.new("GroundMat")
+mat.use_nodes = True
+mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.4, 0.5, 0.25, 1)
+mat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.9
+g.data.materials.append(mat)
 
-# 가장자리
+# Edge
 bpy.ops.mesh.primitive_cylinder_add(radius=6.3, depth=0.3, location=(0, 0.5, -0.4), vertices=32)
-edge = bpy.context.active_object
-edge.name = "GroundEdge"
-edge.scale = (1, 0.8, 1)
-mat_edge = bpy.data.materials.new("GroundEdge")
-mat_edge.use_nodes = True
-bsdf2 = mat_edge.node_tree.nodes["Principled BSDF"]
-bsdf2.inputs["Base Color"].default_value = (0.7, 0.6, 0.45, 1)
-bsdf2.inputs["Roughness"].default_value = 0.95
-edge.data.materials.append(mat_edge)
+e = bpy.context.active_object
+e.name = "Edge"
+e.scale = (1, 0.8, 1)
+mat2 = bpy.data.materials.new("EdgeMat")
+mat2.use_nodes = True
+mat2.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.65, 0.55, 0.4, 1)
+mat2.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.95
+e.data.materials.append(mat2)
 
-# 바위
+# Rocks
 for i in range(6):
-    bpy.ops.mesh.primitive_ico_sphere_add(
-        subdivisions=1,
-        radius=random.uniform(0.2, 0.5),
-        location=(random.uniform(-4, 4), random.uniform(-1.5, 2.5), random.uniform(-0.1, 0.1))
-    )
-    rock = bpy.context.active_object
-    rock.name = f"Rock_{i}"
-    rock.scale = (random.uniform(0.8, 1.5), random.uniform(0.8, 1.5), random.uniform(0.5, 0.8))
-    rock.rotation_euler = (random.uniform(0, 0.3), random.uniform(0, 0.3), random.uniform(0, math.pi * 2))
-    mat_rock = bpy.data.materials.new(f"Rock_{i}")
-    mat_rock.use_nodes = True
-    bsdf_r = mat_rock.node_tree.nodes["Principled BSDF"]
-    gray = random.uniform(0.5, 0.75)
-    bsdf_r.inputs["Base Color"].default_value = (gray, gray, gray * 0.95, 1)
-    bsdf_r.inputs["Roughness"].default_value = 0.9
-    rock.data.materials.append(mat_rock)
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=random.uniform(0.2, 0.5),
+        location=(random.uniform(-4, 4), random.uniform(-1.5, 2.5), random.uniform(-0.1, 0.1)))
+    r = bpy.context.active_object
+    r.scale = (random.uniform(0.8, 1.5), random.uniform(0.8, 1.5), random.uniform(0.5, 0.8))
+    r.rotation_euler = (random.uniform(0, 0.3), random.uniform(0, 0.3), random.uniform(0, math.pi * 2))
+    mr = bpy.data.materials.new(f"Rock{i}")
+    mr.use_nodes = True
+    gray = random.uniform(0.5, 0.7)
+    mr.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (gray, gray, gray*0.95, 1)
+    r.data.materials.append(mr)
 
-# === CAMERA ===
-cam_data = bpy.data.cameras.new("Camera")
-cam_data.type = 'PERSP'
-cam_data.lens = 50
-cam = bpy.data.objects.new("Camera", cam_data)
-bpy.context.collection.objects.link(cam)
-bpy.context.scene.camera = cam
-cam.location = (0, -10, 6)
-cam.rotation_euler = (math.radians(60), 0, 0)
-
-# === LIGHTING ===
-sun = bpy.data.lights.new("Sun", type='SUN')
-sun.energy = 4
-sun_obj = bpy.data.objects.new("Sun", sun)
-bpy.context.collection.objects.link(sun_obj)
-sun_obj.location = (5, -5, 10)
-sun_obj.rotation_euler = (math.radians(40), math.radians(15), 0)
-
-scene = bpy.context.scene
-scene.world = bpy.data.worlds.new("World")
-scene.world.use_nodes = True
-bg = scene.world.node_tree.nodes["Background"]
-bg.inputs["Color"].default_value = (0.82, 0.88, 0.93, 1)
-
-# === RENDER ===
-scene.render.engine = 'BLENDER_EEVEE'
-scene.render.resolution_x = 800
-scene.render.resolution_y = 600
-scene.render.filepath = OUTPUT_IMG
-bpy.ops.render.render(write_still=True)
-print(f"✅ Preview: {OUTPUT_IMG}")
-
-# === EXPORT ===
+# Export
 bpy.ops.object.select_all(action='SELECT')
 for obj in bpy.data.objects:
     if obj.location.x > 50:
         obj.select_set(False)
-
-bpy.ops.export_scene.gltf(
-    filepath=OUTPUT_GLB,
-    export_format='GLB',
-    use_selection=True,
-    export_apply=True,
-    export_materials='EXPORT',
-)
+bpy.ops.export_scene.gltf(filepath=OUTPUT_GLB, export_format='GLB', use_selection=True, export_apply=True)
 print(f"✅ GLB: {OUTPUT_GLB}")
