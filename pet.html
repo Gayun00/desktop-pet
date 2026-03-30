@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      user-select: none;
+    }
+
+    #pet-area {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      -webkit-app-region: drag;
+    }
+
+    canvas {
+      -webkit-app-region: no-drag;
+      cursor: pointer;
+    }
+
+    /* Speech bubble */
+    .bubble {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      border-radius: 18px;
+      padding: 10px 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      color: #333;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      max-width: 240px;
+      text-align: center;
+      z-index: 10;
+      pointer-events: none;
+      animation: bubblePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid white;
+    }
+
+    .bubble.hidden { display: none; }
+
+    @keyframes bubblePop {
+      0% { transform: translateX(-50%) scale(0); opacity: 0; }
+      100% { transform: translateX(-50%) scale(1); opacity: 1; }
+    }
+
+    /* Chat input */
+    .chat-container {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      display: none;
+      -webkit-app-region: no-drag;
+    }
+
+    .chat-container.visible {
+      display: flex;
+      animation: slideUp 0.3s ease-out;
+    }
+
+    .chat-input {
+      width: 220px;
+      padding: 10px 14px;
+      border: 2px solid #7C6FF7;
+      border-radius: 20px;
+      font-size: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      outline: none;
+      background: white;
+      box-shadow: 0 4px 15px rgba(124, 111, 247, 0.2);
+    }
+
+    .chat-input::placeholder {
+      color: #bbb;
+    }
+
+    @keyframes slideUp {
+      0% { transform: translateX(-50%) translateY(20px); opacity: 0; }
+      100% { transform: translateX(-50%) translateY(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="pet-area">
+    <div class="bubble" id="bubble">뭐 해줄까? 클릭해봐! 👋</div>
+    <div id="canvas-container"></div>
+    <div class="chat-container" id="chatContainer">
+      <input class="chat-input" id="chatInput" placeholder="할 일을 말해줘..." autofocus />
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    const THREE = require('three');
+
+    // --- State ---
+    let state = 'idle'; // idle, chatting, running-away, gone, coming-back
+    let runOffset = 0;
+    let petVisible = true;
+
+    // --- Three.js setup ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, 300 / 350, 0.1, 100);
+    camera.position.set(0, 1.5, 5);
+    camera.lookAt(0, 0.5, 0);
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(300, 350);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setClearColor(0x000000, 0);
+    container.appendChild(renderer.domElement);
+
+    // --- Lighting ---
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(3, 5, 4);
+    scene.add(dirLight);
+    const rimLight = new THREE.DirectionalLight(0x9988ff, 0.3);
+    rimLight.position.set(-3, 2, -2);
+    scene.add(rimLight);
+
+    // --- Character group (so we can move everything together) ---
+    const charGroup = new THREE.Group();
+    scene.add(charGroup);
+
+    // --- Slime body ---
+    const bodyGeo = new THREE.SphereGeometry(1, 32, 32);
+    const posAttr = bodyGeo.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+      const y = posAttr.getY(i);
+      if (y < 0) posAttr.setY(i, y * 0.4);
+      if (y < 0.2) {
+        const factor = 1 + (0.2 - y) * 0.3;
+        posAttr.setX(i, posAttr.getX(i) * factor);
+        posAttr.setZ(i, posAttr.getZ(i) * factor);
+      }
+    }
+    posAttr.needsUpdate = true;
+    bodyGeo.computeVertexNormals();
+
+    const bodyMat = new THREE.MeshToonMaterial({ color: 0x7C6FF7, emissive: 0x2a1f6e, emissiveIntensity: 0.1 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 0.4;
+    charGroup.add(body);
+
+    // --- Eyes ---
+    function createEye(x) {
+      const g = new THREE.Group();
+      const white = new THREE.Mesh(
+        new THREE.SphereGeometry(0.18, 16, 16),
+        new THREE.MeshToonMaterial({ color: 0xffffff })
+      );
+      g.add(white);
+      const pupil = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 16, 16),
+        new THREE.MeshToonMaterial({ color: 0x222222 })
+      );
+      pupil.position.z = 0.1;
+      pupil.name = 'pupil';
+      g.add(pupil);
+      const hl = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      hl.position.set(0.04, 0.05, 0.16);
+      g.add(hl);
+      g.position.set(x, 0.85, 0.75);
+      return g;
+    }
+
+    const leftEye = createEye(-0.3);
+    const rightEye = createEye(0.3);
+    charGroup.add(leftEye);
+    charGroup.add(rightEye);
+
+    // --- Blush ---
+    function createBlush(x) {
+      const geo = new THREE.SphereGeometry(0.12, 16, 16);
+      geo.scale(1.5, 0.8, 0.5);
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xff9999, transparent: true, opacity: 0.4 }));
+      m.position.set(x, 0.6, 0.85);
+      return m;
+    }
+    charGroup.add(createBlush(-0.55));
+    charGroup.add(createBlush(0.55));
+
+    // --- Mouth ---
+    const mouthCurve = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(-0.15, 0.5, 0.92),
+      new THREE.Vector3(0, 0.4, 0.95),
+      new THREE.Vector3(0.15, 0.5, 0.92)
+    );
+    const mouth = new THREE.Mesh(
+      new THREE.TubeGeometry(mouthCurve, 16, 0.025, 8, false),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    charGroup.add(mouth);
+
+    // --- Shadow ---
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.8, 32),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.1 })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.01;
+    scene.add(shadow);
+
+    // --- Mouse tracking ---
+    let mouseX = 0, mouseY = 0;
+    document.addEventListener('mousemove', (e) => {
+      mouseX = (e.clientX / 300) * 2 - 1;
+      mouseY = -(e.clientY / 350) * 2 + 1;
+    });
+
+    // --- Click → show chat ---
+    renderer.domElement.addEventListener('click', () => {
+      if (state === 'idle') {
+        state = 'chatting';
+        const chatCont = document.getElementById('chatContainer');
+        chatCont.classList.add('visible');
+        document.getElementById('chatInput').focus();
+        setBubble('할 일을 입력해줘! ⌨️');
+      }
+    });
+
+    // --- Send message on Enter ---
+    document.getElementById('chatInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.value.trim()) {
+        const msg = e.target.value.trim();
+        e.target.value = '';
+        document.getElementById('chatContainer').classList.remove('visible');
+        setBubble(`"${msg}" 알겠어! 가볼게! 🏃`);
+        ipcRenderer.send('start-task', msg);
+      }
+      if (e.key === 'Escape') {
+        document.getElementById('chatContainer').classList.remove('visible');
+        state = 'idle';
+        setBubble('뭐 해줄까? 클릭해봐! 👋');
+      }
+    });
+
+    // --- IPC: run away ---
+    ipcRenderer.on('run-away', () => {
+      state = 'running-away';
+    });
+
+    // --- IPC: come back ---
+    ipcRenderer.on('come-back', (event, resultMsg) => {
+      state = 'coming-back';
+      charGroup.position.x = 6;
+      charGroup.visible = true;
+      shadow.visible = true;
+      setBubble(resultMsg);
+    });
+
+    // --- Bubble helper ---
+    function setBubble(text) {
+      const bubble = document.getElementById('bubble');
+      bubble.classList.remove('hidden');
+      bubble.style.animation = 'none';
+      bubble.offsetHeight;
+      bubble.style.animation = 'bubblePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+      bubble.textContent = text;
+    }
+
+    // --- Animation ---
+    const clock = new THREE.Clock();
+    let clickBounce = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      if (state === 'idle' || state === 'chatting') {
+        // Float
+        const floatY = Math.sin(t * 1.5) * 0.1;
+        body.position.y = 0.4 + floatY;
+        leftEye.position.y = 0.85 + floatY;
+        rightEye.position.y = 0.85 + floatY;
+        mouth.position.y = floatY;
+
+        // Breathe
+        const breathe = 1 + Math.sin(t * 2) * 0.03;
+        body.scale.set(breathe, 1 / breathe, breathe);
+
+        // Eye tracking
+        const tx = mouseX * 0.06;
+        const ty = mouseY * 0.04;
+        [leftEye, rightEye].forEach(eye => {
+          const p = eye.getObjectByName('pupil');
+          if (p) {
+            p.position.x += (tx - p.position.x) * 0.1;
+            p.position.y += (ty - p.position.y) * 0.1;
+          }
+        });
+
+        // Blink
+        const bc = t % 4;
+        leftEye.scale.y = rightEye.scale.y = (bc > 3.8 && bc < 3.95) ? 0.1 : 1;
+
+        // Body tilt
+        body.rotation.y += (mouseX * 0.2 - body.rotation.y) * 0.05;
+
+        // Shadow
+        const ss = 1 - Math.sin(t * 1.5) * 0.1;
+        shadow.scale.set(ss, ss, 1);
+
+        charGroup.position.x = 0;
+      }
+
+      if (state === 'running-away') {
+        // Run to the right and off screen
+        charGroup.position.x += 0.15;
+        // Bouncy run animation
+        body.position.y = 0.4 + Math.abs(Math.sin(t * 12)) * 0.3;
+        body.rotation.z = Math.sin(t * 12) * 0.2;
+        leftEye.position.y = 0.85 + Math.abs(Math.sin(t * 12)) * 0.3;
+        rightEye.position.y = 0.85 + Math.abs(Math.sin(t * 12)) * 0.3;
+        mouth.position.y = Math.abs(Math.sin(t * 12)) * 0.3;
+
+        if (charGroup.position.x > 6) {
+          state = 'gone';
+          charGroup.visible = false;
+          shadow.visible = false;
+          document.getElementById('bubble').classList.add('hidden');
+        }
+      }
+
+      if (state === 'coming-back') {
+        // Come from right
+        charGroup.position.x += (0 - charGroup.position.x) * 0.08;
+        body.position.y = 0.4 + Math.abs(Math.sin(t * 10)) * 0.2;
+        body.rotation.z = Math.sin(t * 10) * 0.15;
+        leftEye.position.y = 0.85 + Math.abs(Math.sin(t * 10)) * 0.2;
+        rightEye.position.y = 0.85 + Math.abs(Math.sin(t * 10)) * 0.2;
+        mouth.position.y = Math.abs(Math.sin(t * 10)) * 0.2;
+
+        if (Math.abs(charGroup.position.x) < 0.05) {
+          charGroup.position.x = 0;
+          body.rotation.z = 0;
+          state = 'idle';
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>

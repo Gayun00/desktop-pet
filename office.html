@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 100%;
+      height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 16px 20px;
+      color: white;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #4ade80;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .status-dot.working {
+      background: #fbbf24;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    #status-text {
+      font-weight: 500;
+    }
+
+    .task-display {
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin: 0 20px 16px;
+      color: white;
+      font-size: 13px;
+    }
+
+    .task-display .label {
+      font-size: 11px;
+      opacity: 0.7;
+      margin-bottom: 4px;
+    }
+
+    #office-canvas {
+      width: 100%;
+      height: calc(100vh - 120px);
+    }
+
+    .log-panel {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0,0,0,0.3);
+      backdrop-filter: blur(10px);
+      padding: 12px 20px;
+      color: rgba(255,255,255,0.8);
+      font-size: 12px;
+      font-family: 'SF Mono', monospace;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+
+    .log-entry {
+      padding: 2px 0;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+      0% { opacity: 0; transform: translateY(5px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="status-text">대기 중...</span>
+  </div>
+  <div class="task-display" id="taskDisplay" style="display:none;">
+    <div class="label">현재 작업</div>
+    <div id="taskText"></div>
+  </div>
+  <canvas id="office-canvas"></canvas>
+  <div class="log-panel" id="logPanel"></div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    const THREE = require('three');
+
+    // --- Three.js setup ---
+    const canvas = document.getElementById('office-canvas');
+    const scene = new THREE.Scene();
+    scene.background = null;
+
+    const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
+    camera.position.set(0, 4, 8);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setClearColor(0x000000, 0);
+
+    // --- Lighting ---
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dl = new THREE.DirectionalLight(0xffffff, 0.8);
+    dl.position.set(5, 8, 5);
+    scene.add(dl);
+
+    // --- Floor (grid) ---
+    const gridHelper = new THREE.GridHelper(10, 10, 0xffffff, 0xffffff);
+    gridHelper.material.opacity = 0.15;
+    gridHelper.material.transparent = true;
+    scene.add(gridHelper);
+
+    // --- Office "desk" objects ---
+    function createDesk(x, z) {
+      const g = new THREE.Group();
+      // Table top
+      const top = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 0.08, 0.8),
+        new THREE.MeshToonMaterial({ color: 0x8B7355 })
+      );
+      top.position.y = 0.6;
+      g.add(top);
+      // Monitor
+      const monitor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.4, 0.05),
+        new THREE.MeshToonMaterial({ color: 0x333333 })
+      );
+      monitor.position.set(0, 0.95, -0.2);
+      g.add(monitor);
+      // Screen glow
+      const screenMat = new THREE.MeshBasicMaterial({ color: 0x66aaff });
+      const screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.3), screenMat);
+      screenMesh.position.set(0, 0.95, -0.17);
+      g.add(screenMesh);
+
+      g.position.set(x, 0, z);
+      return g;
+    }
+
+    scene.add(createDesk(-2.5, -1));
+    scene.add(createDesk(0, -2));
+    scene.add(createDesk(2.5, -1));
+
+    // --- Slime character (same as pet) ---
+    const charGroup = new THREE.Group();
+
+    const bodyGeo = new THREE.SphereGeometry(0.6, 32, 32);
+    const pa = bodyGeo.attributes.position;
+    for (let i = 0; i < pa.count; i++) {
+      const y = pa.getY(i);
+      if (y < 0) pa.setY(i, y * 0.4);
+      if (y < 0.12) {
+        const f = 1 + (0.12 - y) * 0.3;
+        pa.setX(i, pa.getX(i) * f);
+        pa.setZ(i, pa.getZ(i) * f);
+      }
+    }
+    pa.needsUpdate = true;
+    bodyGeo.computeVertexNormals();
+
+    const bodyMat = new THREE.MeshToonMaterial({ color: 0x7C6FF7, emissive: 0x2a1f6e, emissiveIntensity: 0.15 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 0.25;
+    charGroup.add(body);
+
+    // Mini eyes
+    function miniEye(x) {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 12), new THREE.MeshToonMaterial({ color: 0xffffff })));
+      const p = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), new THREE.MeshToonMaterial({ color: 0x222222 }));
+      p.position.z = 0.06;
+      g.add(p);
+      g.position.set(x, 0.5, 0.45);
+      return g;
+    }
+    charGroup.add(miniEye(-0.18));
+    charGroup.add(miniEye(0.18));
+
+    // Shadow
+    const charShadow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.4, 32),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.15 })
+    );
+    charShadow.rotation.x = -Math.PI / 2;
+    charShadow.position.y = 0.01;
+    charGroup.add(charShadow);
+
+    charGroup.visible = false;
+    scene.add(charGroup);
+
+    // --- Movement waypoints ---
+    const waypoints = [
+      { x: -2.5, z: 0 },   // desk 1
+      { x: 0, z: -1 },      // desk 2
+      { x: 2.5, z: 0 },     // desk 3
+      { x: 1, z: 2 },       // wander
+      { x: -1, z: 2 },      // wander
+      { x: 0, z: 0 },       // center
+    ];
+
+    let currentWP = 0;
+    let targetPos = new THREE.Vector3(0, 0, 0);
+    let officeState = 'idle'; // idle, entering, working, exiting
+
+    function pickNextWaypoint() {
+      currentWP = (currentWP + 1) % waypoints.length;
+      targetPos.set(waypoints[currentWP].x, 0, waypoints[currentWP].z);
+    }
+
+    // --- Logs ---
+    const logMessages = [
+      '코드 분석 중...',
+      'Sentry 이슈 확인 중...',
+      '관련 파일 검색 중...',
+      '수정 방안 검토 중...',
+      '테스트 실행 중...',
+      '결과 정리 중...',
+      'Slack 메시지 확인...',
+      'Jira 티켓 업데이트 중...',
+    ];
+    let logIndex = 0;
+
+    function addLog(msg) {
+      const panel = document.getElementById('logPanel');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      const time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      entry.textContent = `[${time}] ${msg}`;
+      panel.appendChild(entry);
+      panel.scrollTop = panel.scrollHeight;
+    }
+
+    // --- IPC ---
+    ipcRenderer.on('task-started', (event, msg) => {
+      officeState = 'entering';
+      charGroup.visible = true;
+      charGroup.position.set(8, 0, 0); // start off-screen right
+      charGroup.rotation.y = Math.PI; // face left (toward center)
+
+      document.getElementById('statusDot').classList.add('working');
+      document.getElementById('status-text').textContent = '도착 중...';
+      document.getElementById('taskDisplay').style.display = 'block';
+      document.getElementById('taskText').textContent = msg;
+
+      addLog(`🏃 캐릭터가 달려오는 중...`);
+
+      // After entering, start working
+      setTimeout(() => {
+        if (officeState === 'entering') {
+          officeState = 'working';
+          pickNextWaypoint();
+          addLog(`📋 새 작업: "${msg}"`);
+          document.getElementById('status-text').textContent = '작업 중...';
+        }
+      }, 1500);
+
+      // Add periodic logs
+      const logInterval = setInterval(() => {
+        if (officeState === 'exiting' || officeState === 'idle') { clearInterval(logInterval); return; }
+        addLog(logMessages[logIndex % logMessages.length]);
+        logIndex++;
+      }, 1200);
+    });
+
+    ipcRenderer.on('task-done', (event, msg) => {
+      officeState = 'exiting';
+      addLog(`✅ 완료! "${msg}"`);
+      addLog(`🏃 캐릭터가 돌아가는 중...`);
+      document.getElementById('statusDot').classList.remove('working');
+      document.getElementById('status-text').textContent = '완료! 돌아가는 중...';
+    });
+
+    // --- Animation ---
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      if (officeState === 'entering') {
+        // Run in from right side toward center
+        const enterTarget = new THREE.Vector3(0, 0, 0);
+        const dx = enterTarget.x - charGroup.position.x;
+        const dz = enterTarget.z - charGroup.position.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        if (dist > 0.3) {
+          const speed = 0.12;
+          charGroup.position.x += (dx / dist) * speed;
+          charGroup.position.z += (dz / dist) * speed;
+          charGroup.rotation.y = Math.atan2(dx, dz);
+
+          // Fast bouncy run
+          body.position.y = 0.25 + Math.abs(Math.sin(t * 14)) * 0.25;
+          body.rotation.z = Math.sin(t * 14) * 0.15;
+        }
+
+        const b = 1 + Math.sin(t * 3) * 0.05;
+        body.scale.set(b, 1 / b, b);
+      }
+
+      if (officeState === 'working') {
+        // Move toward waypoint
+        const dx = targetPos.x - charGroup.position.x;
+        const dz = targetPos.z - charGroup.position.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        if (dist > 0.2) {
+          const speed = 0.06;
+          charGroup.position.x += (dx / dist) * speed;
+          charGroup.position.z += (dz / dist) * speed;
+          charGroup.rotation.y = Math.atan2(dx, dz);
+
+          // Bouncy run
+          body.position.y = 0.25 + Math.abs(Math.sin(t * 10)) * 0.15;
+          body.rotation.z = Math.sin(t * 10) * 0.1;
+        } else {
+          pickNextWaypoint();
+          body.position.y = 0.25;
+        }
+
+        const b = 1 + Math.sin(t * 3) * 0.05;
+        body.scale.set(b, 1 / b, b);
+      }
+
+      if (officeState === 'exiting') {
+        // Run off to the left
+        charGroup.position.x -= 0.1;
+        charGroup.rotation.y = -Math.PI / 2; // face left
+
+        // Fast bouncy run
+        body.position.y = 0.25 + Math.abs(Math.sin(t * 14)) * 0.25;
+        body.rotation.z = Math.sin(t * 14) * 0.15;
+
+        if (charGroup.position.x < -8) {
+          officeState = 'idle';
+          charGroup.visible = false;
+          document.getElementById('status-text').textContent = '돌아갔어!';
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // --- Resize ---
+    window.addEventListener('resize', () => {
+      camera.aspect = canvas.clientWidth / canvas.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    });
+  </script>
+</body>
+</html>
