@@ -30,18 +30,14 @@
       animation: pulse 1.5s ease-in-out infinite;
     }
 
-    .status-dot.working {
-      background: #fbbf24;
-    }
+    .status-dot.working { background: #fbbf24; }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
 
-    #status-text {
-      font-weight: 500;
-    }
+    #status-text { font-weight: 500; }
 
     .task-display {
       background: rgba(255,255,255,0.15);
@@ -105,56 +101,61 @@
   <script>
     const { ipcRenderer } = require('electron');
     const THREE = require('three');
+    const { GLTFLoader } = require('three/examples/jsm/loaders/GLTFLoader.js');
+    const path = require('path');
 
     // --- Three.js setup ---
     const canvas = document.getElementById('office-canvas');
     const scene = new THREE.Scene();
-    scene.background = null;
+    scene.background = new THREE.Color(0x1a1a2e);
 
     const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
-    camera.position.set(0, 4, 8);
+    camera.position.set(0, 5, 8);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setSize(canvas.clientWidth, canvas.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setClearColor(0x000000, 0);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     // --- Lighting ---
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-    const dl = new THREE.DirectionalLight(0xffffff, 0.8);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dl = new THREE.DirectionalLight(0xffffff, 1.0);
     dl.position.set(5, 8, 5);
     scene.add(dl);
 
-    // --- Floor (grid) ---
-    const gridHelper = new THREE.GridHelper(10, 10, 0xffffff, 0xffffff);
-    gridHelper.material.opacity = 0.15;
-    gridHelper.material.transparent = true;
+    // --- Floor ---
+    const floorGeo = new THREE.PlaneGeometry(12, 12);
+    const floorMat = new THREE.MeshToonMaterial({ color: 0x2a2a4a });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    const gridHelper = new THREE.GridHelper(12, 12, 0x4a4a6a, 0x3a3a5a);
+    gridHelper.position.y = 0.01;
     scene.add(gridHelper);
 
-    // --- Office "desk" objects ---
+    // --- Desks ---
     function createDesk(x, z) {
       const g = new THREE.Group();
-      // Table top
       const top = new THREE.Mesh(
         new THREE.BoxGeometry(1.2, 0.08, 0.8),
         new THREE.MeshToonMaterial({ color: 0x8B7355 })
       );
       top.position.y = 0.6;
       g.add(top);
-      // Monitor
       const monitor = new THREE.Mesh(
         new THREE.BoxGeometry(0.6, 0.4, 0.05),
         new THREE.MeshToonMaterial({ color: 0x333333 })
       );
       monitor.position.set(0, 0.95, -0.2);
       g.add(monitor);
-      // Screen glow
-      const screenMat = new THREE.MeshBasicMaterial({ color: 0x66aaff });
-      const screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.3), screenMat);
+      const screenMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.5, 0.3),
+        new THREE.MeshBasicMaterial({ color: 0x66aaff })
+      );
       screenMesh.position.set(0, 0.95, -0.17);
       g.add(screenMesh);
-
       g.position.set(x, 0, z);
       return g;
     }
@@ -163,66 +164,57 @@
     scene.add(createDesk(0, -2));
     scene.add(createDesk(2.5, -1));
 
-    // --- Slime character (same as pet) ---
+    // --- Load Robot ---
     const charGroup = new THREE.Group();
-
-    const bodyGeo = new THREE.SphereGeometry(0.6, 32, 32);
-    const pa = bodyGeo.attributes.position;
-    for (let i = 0; i < pa.count; i++) {
-      const y = pa.getY(i);
-      if (y < 0) pa.setY(i, y * 0.4);
-      if (y < 0.12) {
-        const f = 1 + (0.12 - y) * 0.3;
-        pa.setX(i, pa.getX(i) * f);
-        pa.setZ(i, pa.getZ(i) * f);
-      }
-    }
-    pa.needsUpdate = true;
-    bodyGeo.computeVertexNormals();
-
-    const bodyMat = new THREE.MeshToonMaterial({ color: 0x7C6FF7, emissive: 0x2a1f6e, emissiveIntensity: 0.15 });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.25;
-    charGroup.add(body);
-
-    // Mini eyes
-    function miniEye(x) {
-      const g = new THREE.Group();
-      g.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 12), new THREE.MeshToonMaterial({ color: 0xffffff })));
-      const p = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), new THREE.MeshToonMaterial({ color: 0x222222 }));
-      p.position.z = 0.06;
-      g.add(p);
-      g.position.set(x, 0.5, 0.45);
-      return g;
-    }
-    charGroup.add(miniEye(-0.18));
-    charGroup.add(miniEye(0.18));
-
-    // Shadow
-    const charShadow = new THREE.Mesh(
-      new THREE.CircleGeometry(0.4, 32),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.15 })
-    );
-    charShadow.rotation.x = -Math.PI / 2;
-    charShadow.position.y = 0.01;
-    charGroup.add(charShadow);
-
     charGroup.visible = false;
     scene.add(charGroup);
 
-    // --- Movement waypoints ---
+    let mixer = null;
+    let animations = {};
+    let currentAction = null;
+    let robot = null;
+
+    const loader = new GLTFLoader();
+    const modelPath = path.join(__dirname, 'assets', 'robot.glb');
+
+    loader.load(modelPath, (gltf) => {
+      robot = gltf.scene;
+      robot.scale.set(0.4, 0.4, 0.4);
+      charGroup.add(robot);
+
+      mixer = new THREE.AnimationMixer(robot);
+      gltf.animations.forEach((clip) => {
+        animations[clip.name] = mixer.clipAction(clip);
+      });
+    });
+
+    function playAnimation(name, options = {}) {
+      if (!animations[name]) return;
+      const newAction = animations[name];
+      if (currentAction && currentAction !== newAction) {
+        currentAction.fadeOut(0.2);
+      }
+      newAction.reset();
+      newAction.fadeIn(0.2);
+      newAction.setLoop(options.loop !== false ? THREE.LoopRepeat : THREE.LoopOnce);
+      if (options.timeScale) newAction.timeScale = options.timeScale;
+      newAction.play();
+      currentAction = newAction;
+    }
+
+    // --- Waypoints ---
     const waypoints = [
-      { x: -2.5, z: 0 },   // desk 1
-      { x: 0, z: -1 },      // desk 2
-      { x: 2.5, z: 0 },     // desk 3
-      { x: 1, z: 2 },       // wander
-      { x: -1, z: 2 },      // wander
-      { x: 0, z: 0 },       // center
+      { x: -2.5, z: 0 },
+      { x: 0, z: -1 },
+      { x: 2.5, z: 0 },
+      { x: 1, z: 2 },
+      { x: -1, z: 2 },
+      { x: 0, z: 0 },
     ];
 
     let currentWP = 0;
     let targetPos = new THREE.Vector3(0, 0, 0);
-    let officeState = 'idle'; // idle, entering, working, exiting
+    let officeState = 'idle';
 
     function pickNextWaypoint() {
       currentWP = (currentWP + 1) % waypoints.length;
@@ -256,27 +248,25 @@
     ipcRenderer.on('task-started', (event, msg) => {
       officeState = 'entering';
       charGroup.visible = true;
-      charGroup.position.set(8, 0, 0); // start off-screen right
-      charGroup.rotation.y = Math.PI; // face left (toward center)
+      charGroup.position.set(8, 0, 0);
+      playAnimation('Running', { timeScale: 1.5 });
 
       document.getElementById('statusDot').classList.add('working');
       document.getElementById('status-text').textContent = '도착 중...';
       document.getElementById('taskDisplay').style.display = 'block';
       document.getElementById('taskText').textContent = msg;
-
       addLog(`🏃 캐릭터가 달려오는 중...`);
 
-      // After entering, start working
       setTimeout(() => {
         if (officeState === 'entering') {
           officeState = 'working';
           pickNextWaypoint();
+          playAnimation('Running');
           addLog(`📋 새 작업: "${msg}"`);
           document.getElementById('status-text').textContent = '작업 중...';
         }
-      }, 1500);
+      }, 2000);
 
-      // Add periodic logs
       const logInterval = setInterval(() => {
         if (officeState === 'exiting' || officeState === 'idle') { clearInterval(logInterval); return; }
         addLog(logMessages[logIndex % logMessages.length]);
@@ -286,6 +276,7 @@
 
     ipcRenderer.on('task-done', (event, msg) => {
       officeState = 'exiting';
+      playAnimation('Running', { timeScale: 1.5 });
       addLog(`✅ 완료! "${msg}"`);
       addLog(`🏃 캐릭터가 돌아가는 중...`);
       document.getElementById('statusDot').classList.remove('working');
@@ -297,62 +288,43 @@
 
     function animate() {
       requestAnimationFrame(animate);
+      const delta = clock.getDelta();
       const t = clock.getElapsedTime();
 
+      if (mixer) mixer.update(delta);
+
       if (officeState === 'entering') {
-        // Run in from right side toward center
         const enterTarget = new THREE.Vector3(0, 0, 0);
         const dx = enterTarget.x - charGroup.position.x;
         const dz = enterTarget.z - charGroup.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
 
         if (dist > 0.3) {
-          const speed = 0.12;
+          const speed = 0.1;
           charGroup.position.x += (dx / dist) * speed;
           charGroup.position.z += (dz / dist) * speed;
           charGroup.rotation.y = Math.atan2(dx, dz);
-
-          // Fast bouncy run
-          body.position.y = 0.25 + Math.abs(Math.sin(t * 14)) * 0.25;
-          body.rotation.z = Math.sin(t * 14) * 0.15;
         }
-
-        const b = 1 + Math.sin(t * 3) * 0.05;
-        body.scale.set(b, 1 / b, b);
       }
 
       if (officeState === 'working') {
-        // Move toward waypoint
         const dx = targetPos.x - charGroup.position.x;
         const dz = targetPos.z - charGroup.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
 
-        if (dist > 0.2) {
-          const speed = 0.06;
+        if (dist > 0.3) {
+          const speed = 0.05;
           charGroup.position.x += (dx / dist) * speed;
           charGroup.position.z += (dz / dist) * speed;
           charGroup.rotation.y = Math.atan2(dx, dz);
-
-          // Bouncy run
-          body.position.y = 0.25 + Math.abs(Math.sin(t * 10)) * 0.15;
-          body.rotation.z = Math.sin(t * 10) * 0.1;
         } else {
           pickNextWaypoint();
-          body.position.y = 0.25;
         }
-
-        const b = 1 + Math.sin(t * 3) * 0.05;
-        body.scale.set(b, 1 / b, b);
       }
 
       if (officeState === 'exiting') {
-        // Run off to the left
         charGroup.position.x -= 0.1;
-        charGroup.rotation.y = -Math.PI / 2; // face left
-
-        // Fast bouncy run
-        body.position.y = 0.25 + Math.abs(Math.sin(t * 14)) * 0.25;
-        body.rotation.z = Math.sin(t * 14) * 0.15;
+        charGroup.rotation.y = -Math.PI / 2;
 
         if (charGroup.position.x < -8) {
           officeState = 'idle';
@@ -366,7 +338,6 @@
 
     animate();
 
-    // --- Resize ---
     window.addEventListener('resize', () => {
       camera.aspect = canvas.clientWidth / canvas.clientHeight;
       camera.updateProjectionMatrix();
