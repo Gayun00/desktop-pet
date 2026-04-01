@@ -270,49 +270,44 @@
     // --- Personality system ---
     // Each personality has a sequence of [anim, duration] pairs for what they do at waypoints
     const personalities = {
-      // 보라: 정석파 — 꼼꼼하게 일함
-      // [startAnim, holdAnim, duration] — startAnim 한번 재생 후 holdAnim으로 유지
+      // 보라: 정석파 — 바쁘게 뛰어다니다 가끔 멈춰서 확인
       'pet-1': {
         name: '정석',
-        moveAnim: 'Walking',
-        moveSpeed: 0.04,
+        moveAnim: 'Running',
+        moveSpeed: 0.06,
         acceptAnim: 'Yes',
         sequence: [
-          ['Standing', 'Idle', 8000],      // 서서 분석 (Standing 후 Idle 유지)
-          ['Sitting', 'Idle', 12000],      // 앉아서 코딩 (오래)
-          ['ThumbsUp', 'Idle', 3000],      // 확인
-          ['Standing', 'Idle', 8000],      // 서서 리뷰
-          ['Yes', 'Idle', 5000],           // 끄덕 후 생각
+          ['Standing', 'Idle', 3000],
+          ['ThumbsUp', 'Idle', 2000],
+          ['Yes', 'Idle', 2000],
+          ['Sitting', 'Idle', 4000],
         ],
       },
-      // 민트: ADHD — 산만하지만 열정적
+      // 민트: ADHD — 미친듯이 뛰다가 갑자기 춤/쓰러짐
       'pet-2': {
         name: 'ADHD',
         moveAnim: 'Running',
-        moveSpeed: 0.07,
+        moveSpeed: 0.09,
         acceptAnim: 'Jump',
         sequence: [
-          ['Dance', 'Dance', 6000],        // 춤 (반복)
-          ['Jump', 'Idle', 3000],          // 점프 후 잠깐
-          ['Punch', 'Idle', 4000],         // 키보드 펀치
-          ['Dance', 'Dance', 5000],        // 또 춤
-          ['Death', 'Death', 5000],        // 쓰러져서 한참 있음
-          ['Jump', 'ThumbsUp', 3000],      // 일어나서 엄지척
+          ['Dance', 'Dance', 3000],
+          ['Jump', 'Idle', 1500],
+          ['Punch', 'Idle', 2000],
+          ['Death', 'Death', 3000],
+          ['Jump', 'ThumbsUp', 2000],
         ],
       },
-      // 코랄: 냉소파 — 귀찮지만 해야지
+      // 코랄: 냉소파 — 느릿느릿 걷다 가끔 멈춤
       'pet-3': {
         name: '냉소',
         moveAnim: 'Walking',
-        moveSpeed: 0.025,
+        moveSpeed: 0.035,
         acceptAnim: 'No',
         sequence: [
-          ['No', 'Idle', 5000],            // 고개 가로젓고 멍
-          ['Idle', 'Idle', 10000],         // 멍때림 (오래)
-          ['Death', 'Death', 8000],        // 쓰러져서 한참
-          ['Standing', 'Idle', 5000],      // 겨우 일어남
-          ['Sitting', 'Idle', 10000],      // 앉아서 겨우 작업
-          ['No', 'Idle', 6000],            // 또 고개 가로젓고 멍
+          ['No', 'Idle', 2500],
+          ['Idle', 'Idle', 4000],
+          ['Death', 'Death', 3000],
+          ['Standing', 'Idle', 2000],
         ],
       },
     };
@@ -581,7 +576,7 @@
             if (w.seqTimer <= 0) {
               w.seqIndex++;
               // Every 2 steps, move to a new waypoint
-              if (w.seqIndex % 2 === 0) {
+              if (w.seqIndex % 5 !== 0) {
                 w.subState = 'moving';
                 pickWP(w);
                 playWorkerAnim(w, p.moveAnim);
